@@ -1,0 +1,24 @@
+{
+  "name": "toy-api-demo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "nodemon bin/www",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "DEBUG=toy-api-demo* nodemon bin/www"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@fastify/cors": "^7.0.0",
+    "debug": "^4.3.4",
+    "fastify": "^3.27.4",
+    "fastify-plugin": "^4.0.0",
+    "lodash-core": "^4.17.19"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.15",
+    "dotenv": "^16.0.0"
+  }
+}

@@ -1,0 +1,53 @@
+
+export
+curl -X GET http://localhost:8080/api/toys/export | json_pp
+
+----------------
+
+list
+curl -X GET http://localhost:8080/api/toys \
+  -H 'Content-Type: application/json' | json_pp
+
+----------------
+
+create
+
+not valid
+curl -X POST http://localhost:8080/api/toys \
+  -H "Content-Type: application/json" -d "{\"name\":\"test\",\"content\":\"zz\"}" | json_pp
+
+valid
+curl -X POST http://localhost:8080/api/toys \
+  -H "Content-Type: application/json" -d "{\"name\":\"test\",\"image\":\"zz\"}" | json_pp
+curl -X POST http://localhost:8080/api/toys \
+  -H "Content-Type: application/json" -d "{\"name\":\"test\",\"image\":\"zz\",\"likes\":200}" | json_pp
+
+----------------
+
+update
+
+not valid
+curl -X POST http://localhost:8080/api/toys/1 \
+  -H "Content-Type: application/json" -d "{\"name\":\"test\",\"content\":\"zz\"}" | json_pp
+
+valid
+curl -X POST http://localhost:8080/api/toys/1 \
+  -H "Content-Type: application/json" -d "{\"name\":\"test1\",\"image\":\"test\"}" | json_pp
+curl -X PATCH http://localhost:8080/api/toys/1 \
+  -H "Content-Type: application/json" -d "{\"name\":\"test3\",\"image\":\"test2\",\"likes\":2000}" | json_pp
+
+----------------
+
+likes
+
+not valid
+curl -X POST http://localhost:8080/api/toys/1/likes \
+  -H "Content-Type: application/json" -d "{\"name\":\"test\",\"content\":\"zz\"}" | json_pp
+
+valid
+curl -X POST http://localhost:8080/api/toys/1/likes \
+  -H "Content-Type: application/json" -d "{\"likes\":\"3\",\"image\":\"test\"}" | json_pp
+curl -X PUT http://localhost:8080/api/toys/1/likes \
+  -H "Content-Type: application/json" -d "{\"likes\":2030}" | json_pp
+
+----------------
