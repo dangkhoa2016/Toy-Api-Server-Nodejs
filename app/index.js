@@ -95,8 +95,29 @@ function resolveSecurityHeadersOptions(securityHeadersOptions = {}, nodeEnv) {
   };
 }
 
+function resolveBasicAuthOptions(basicAuthOptions = {}) {
+  const envEnabled = process.env.BASIC_AUTH_ENABLED;
+  const enabled =
+    typeof basicAuthOptions.enabled === 'boolean'
+      ? basicAuthOptions.enabled
+      : envEnabled
+        ? envEnabled !== 'false'
+        : false;
+
+  return {
+    enabled,
+    password:
+      basicAuthOptions.password || process.env.BASIC_AUTH_PASSWORD || '',
+    realm: basicAuthOptions.realm || process.env.BASIC_AUTH_REALM || 'Toy API',
+    skippedPaths: basicAuthOptions.skippedPaths,
+    username:
+      basicAuthOptions.username || process.env.BASIC_AUTH_USERNAME || '',
+  };
+}
+
 function buildServer(options = {}) {
   const {
+    basicAuth,
     corsOrigins = parseCorsOrigins(process.env.CORS_ORIGINS),
     logger,
     nodeEnv = process.env.NODE_ENV,
@@ -112,6 +133,7 @@ function buildServer(options = {}) {
     securityHeaders,
     nodeEnv,
   );
+  const resolvedBasicAuthOptions = resolveBasicAuthOptions(basicAuth);
   const resolvedToyStore =
     toyStore || new MemoryStore({ snapshot: resolvedSnapshotOptions });
   const resolvedToysService =
@@ -134,7 +156,7 @@ function buildServer(options = {}) {
         title: 'Toy API Server',
         version: '1.0.0',
         description:
-          'Fastify-based toy API with in-memory storage, snapshot persistence, and rate limiting.',
+          'Fastify-based toy API with in-memory storage, snapshot persistence, rate limiting, and optional basic auth.',
       },
       tags: [
         { name: 'system', description: 'Operational endpoints' },
@@ -238,6 +260,8 @@ function buildServer(options = {}) {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     origin: createCorsOriginValidator({ corsOrigins, nodeEnv }),
   });
+
+  server.register(require('./middleware/basic_auth'), resolvedBasicAuthOptions);
 
   server.register(require('./routes/errors'));
   server.register(require('./routes/home'));

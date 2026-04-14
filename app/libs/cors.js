@@ -1,6 +1,7 @@
 const { statusCodes } = require('./variables');
 
 const corsAllowedHeaders = [
+  'Authorization',
   'Content-Type',
   'Location',
   'X-Correlation-Id',

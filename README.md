@@ -2,7 +2,7 @@
 
 Sample REST API built with Fastify.
 
-The project intentionally keeps all toy data in memory, so data is lost whenever the server restarts.
+The project intentionally keeps all toy data in memory, with optional snapshot persistence to restore state after restart.
 
 ## Setup
 
@@ -23,6 +23,10 @@ The project intentionally keeps all toy data in memory, so data is lost whenever
 - `RATE_LIMIT_MAX`: maximum requests allowed per window per client.
 - `RATE_LIMIT_WINDOW_MS`: rate-limit window length in milliseconds.
 - `SECURITY_HEADERS_ENABLED`: enable or disable security headers.
+- `BASIC_AUTH_ENABLED`: protect API and docs with HTTP Basic Auth.
+- `BASIC_AUTH_USERNAME`: username used when basic auth is enabled.
+- `BASIC_AUTH_PASSWORD`: password used when basic auth is enabled.
+- `BASIC_AUTH_REALM`: optional realm sent in the `WWW-Authenticate` header.
 - `SNAPSHOT_ENABLED`: enable or disable snapshot persistence.
 - `SNAPSHOT_FILE_PATH`: snapshot file path used for restore/save.
 - `SNAPSHOT_INTERVAL_MS`: auto-save interval in milliseconds.
@@ -31,6 +35,7 @@ When `NODE_ENV=production`, requests with an untrusted `Origin` header are rejec
 Production also enables Fastify's structured JSON logger and returns `x-request-id` and `x-correlation-id` headers for request tracing.
 Snapshot persistence restores the in-memory store on boot and flushes state again during shutdown.
 Rate limiting is in-memory and can be snapshotted with the rest of store state.
+When basic auth is enabled, all routes except `/healthz` and favicon assets require credentials.
 
 ## Scripts
 
@@ -55,6 +60,7 @@ Rate limiting is in-memory and can be snapshotted with the rest of store state.
 
 - Security headers are provided by Fastify Helmet.
 - Rate limiting is enforced per client IP and returns `429` with `x-ratelimit-*` headers when exceeded.
+- Optional basic auth protects API and Swagger endpoints with `401` + `WWW-Authenticate` when credentials are missing or invalid.
 
 ## API notes
 
@@ -80,10 +86,18 @@ Start the server first:
 npm run dev
 ```
 
+If basic auth is enabled, add credentials to curl calls with `-u user:password`.
+
 List toys:
 
 ```bash
 curl http://localhost:8080/api/toys
+```
+
+List toys with basic auth enabled:
+
+```bash
+curl -u admin:secret http://localhost:8080/api/toys
 ```
 
 Create a toy:
@@ -139,7 +153,7 @@ curl -OJ http://localhost:8080/api/toys/export
 Fetch the OpenAPI document:
 
 ```bash
-curl http://localhost:8080/openapi.json
+curl -u admin:secret http://localhost:8080/openapi.json
 ```
 
 ## CI

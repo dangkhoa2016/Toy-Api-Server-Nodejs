@@ -11,6 +11,10 @@ async function createServer(options = {}) {
   toysHelpers.resetToys();
 
   const server = buildServer({
+    basicAuth:
+      typeof options.basicAuth === 'undefined'
+        ? { enabled: false }
+        : options.basicAuth,
     rateLimit:
       typeof options.rateLimit === 'undefined'
         ? { enabled: false }
@@ -219,12 +223,69 @@ test('security headers are enabled when configured', async (t) => {
     await server.close();
   });
 
-  const response = await server.inject({ method: 'GET', url: '/healthz' });
+  const response = await server.inject({ method: 'GET', url: '/health' });
 
   assert.equal(response.statusCode, 200);
   assert.equal(response.headers['x-frame-options'], 'SAMEORIGIN');
   assert.equal(response.headers['x-content-type-options'], 'nosniff');
   assert.equal(typeof response.headers['referrer-policy'], 'string');
+});
+
+test('basic auth protects API routes and leaves health checks available', async (t) => {
+  const server = await createServer({
+    nodeEnv: 'production',
+    basicAuth: {
+      enabled: true,
+      username: 'admin',
+      password: 'secret',
+    },
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const unauthorizedResponse = await server.inject({
+    method: 'GET',
+    url: '/api/toys',
+  });
+  const authorizedResponse = await server.inject({
+    method: 'GET',
+    url: '/api/toys',
+    headers: {
+      authorization: `Basic ${Buffer.from('admin:secret').toString('base64')}`,
+    },
+  });
+  const healthResponse = await server.inject({
+    method: 'GET',
+    url: '/health',
+  });
+
+  assert.equal(unauthorizedResponse.statusCode, 401);
+  assert.equal(unauthorizedResponse.json().error.statusCode, 401);
+  assert.equal(
+    unauthorizedResponse.json().error.message,
+    'Authentication required',
+  );
+  assert.equal(
+    unauthorizedResponse.headers['www-authenticate'],
+    'Basic realm="Toy API"',
+  );
+
+  assert.equal(authorizedResponse.statusCode, 200);
+  assert.equal(healthResponse.statusCode, 200);
+});
+
+test('basic auth configuration fails fast when credentials are missing', async () => {
+  await assert.rejects(
+    createServer({
+      nodeEnv: 'production',
+      basicAuth: {
+        enabled: true,
+        username: 'admin',
+      },
+    }),
+    /requires username and password/i,
+  );
 });
 
 test('rate limiting blocks requests after threshold and exposes headers', async (t) => {
@@ -271,6 +332,11 @@ test('rate limiting blocks requests after threshold and exposes headers', async 
 test('cors allows trusted origins in production and blocks others', async (t) => {
   const server = await createServer({
     nodeEnv: 'production',
+    basicAuth: {
+      enabled: true,
+      username: 'admin',
+      password: 'secret',
+    },
     corsOrigins: ['https://allowed.example'],
   });
   t.after(async () => {
@@ -305,6 +371,21 @@ test('cors allows trusted origins in production and blocks others', async (t) =>
   assert.equal(
     blockedResponse.json().error.message,
     'Origin is not allowed by CORS',
+  );
+
+  const authenticatedResponse = await server.inject({
+    method: 'GET',
+    url: '/api/toys',
+    headers: {
+      authorization: `Basic ${Buffer.from('admin:secret').toString('base64')}`,
+      origin: 'https://allowed.example',
+    },
+  });
+
+  assert.equal(authenticatedResponse.statusCode, 200);
+  assert.equal(
+    authenticatedResponse.headers['access-control-allow-origin'],
+    'https://allowed.example',
   );
 });
 
