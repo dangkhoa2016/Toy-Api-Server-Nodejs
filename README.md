@@ -13,6 +13,8 @@ The project intentionally keeps all toy data in memory, with optional snapshot p
 3. Start the development server:
    `npm run dev`
 
+When running outside production, `bin/www` automatically loads variables from `.env.local`.
+
 ## Environment
 
 - `PORT`: port to listen on.
@@ -41,7 +43,9 @@ When basic auth is enabled, all routes except `/healthz` and favicon assets requ
 
 - `npm run dev`: run with nodemon and debug logs.
 - `npm run lint`: lint JavaScript files with ESLint.
+- `npm run lint:fix`: lint and apply safe automatic fixes.
 - `npm run format`: format the repository with Prettier.
+- `npm run format:check`: check formatting without changing files.
 - `npm start`: run once with Node.js.
 - `npm test`: run unit and integration tests with the Node test runner.
 
@@ -49,6 +53,8 @@ When basic auth is enabled, all routes except `/healthz` and favicon assets requ
 
 - Swagger UI: `/docs/`
 - OpenAPI JSON: `/openapi.json`
+- When basic auth is enabled, both `/docs/` and `/openapi.json` require credentials.
+- When basic auth is enabled, Swagger UI shows an `Authorize` button for the shared `basicAuth` scheme.
 
 ## Persistence
 
@@ -158,4 +164,4 @@ curl -u admin:secret http://localhost:8080/openapi.json
 
 ## CI
 
-GitHub Actions runs `npm test` on every push and pull request.
+GitHub Actions currently installs dependencies with `yarn install --frozen-lockfile` and runs `yarn test` on every push and pull request.

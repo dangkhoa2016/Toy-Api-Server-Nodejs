@@ -33,6 +33,7 @@ async function routes(fastify, _options) {
         response: {
           200: { $ref: 'HealthStatus#' },
         },
+        security: [],
         summary: 'Check service health',
         tags: ['system'],
       },

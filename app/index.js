@@ -152,12 +152,23 @@ function buildServer(options = {}) {
 
   server.register(require('@fastify/swagger'), {
     openapi: {
+      components: resolvedBasicAuthOptions.enabled
+        ? {
+            securitySchemes: {
+              basicAuth: {
+                scheme: 'basic',
+                type: 'http',
+              },
+            },
+          }
+        : undefined,
       info: {
         title: 'Toy API Server',
         version: '1.0.0',
         description:
           'Fastify-based toy API with in-memory storage, snapshot persistence, rate limiting, and optional basic auth.',
       },
+      security: resolvedBasicAuthOptions.enabled ? [{ basicAuth: [] }] : [],
       tags: [
         { name: 'system', description: 'Operational endpoints' },
         { name: 'toys', description: 'Toy resource operations' },

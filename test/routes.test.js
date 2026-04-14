@@ -464,3 +464,40 @@ test('openapi json and swagger ui are exposed', async (t) => {
   assert.equal(docsResponse.statusCode, 200);
   assert.match(docsResponse.headers['content-type'], /text\/html/i);
 });
+
+test('openapi exposes basic auth security scheme when auth is enabled', async (t) => {
+  const server = await createServer({
+    nodeEnv: 'production',
+    basicAuth: {
+      enabled: true,
+      username: 'admin',
+      password: 'secret',
+    },
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const openApiResponse = await server.inject({
+    method: 'GET',
+    url: '/openapi.json',
+    headers: {
+      authorization: `Basic ${Buffer.from('admin:secret').toString('base64')}`,
+    },
+  });
+
+  assert.equal(openApiResponse.statusCode, 200);
+
+  const document = openApiResponse.json();
+  assert.deepEqual(document.security, [{ basicAuth: [] }]);
+  assert.deepEqual(document.components.securitySchemes.basicAuth, {
+    scheme: 'basic',
+    type: 'http',
+  });
+  assert.deepEqual(document.paths['/health'].get.security, []);
+
+  const toyListOperation =
+    document.paths['/api/toys']?.get || document.paths['/api/toys/']?.get;
+  assert.ok(toyListOperation);
+  assert.equal(typeof toyListOperation.summary, 'string');
+});
