@@ -1,3 +1,6 @@
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 
@@ -7,7 +10,13 @@ const buildServer = require('../app');
 async function createServer(options = {}) {
   toysHelpers.resetToys();
 
-  const server = buildServer(options);
+  const server = buildServer({
+    snapshot:
+      typeof options.snapshot === 'undefined'
+        ? { enabled: false }
+        : options.snapshot,
+    ...options,
+  });
   await server.ready();
   return server;
 }
@@ -231,4 +240,54 @@ test('cors allows trusted origins in production and blocks others', async (t) =>
     blockedResponse.json().error.message,
     'Origin is not allowed by CORS',
   );
+});
+
+test('server restores toys from snapshot on restart', async (t) => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'toy-server-'));
+  const snapshotFilePath = path.join(tempDir, 'memory-store.snapshot.json');
+
+  const serverA = await createServer({
+    nodeEnv: 'production',
+    snapshot: {
+      enabled: true,
+      filePath: snapshotFilePath,
+      intervalMs: 0,
+    },
+  });
+  t.after(async () => {
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  const createResponse = await serverA.inject({
+    method: 'POST',
+    url: '/api/toys',
+    payload: {
+      name: 'Snapshot Toy',
+      image: 'https://example.com/snapshot-toy.png',
+      likes: 4,
+    },
+  });
+  assert.equal(createResponse.statusCode, 201);
+  await serverA.close();
+
+  const serverB = await createServer({
+    nodeEnv: 'production',
+    snapshot: {
+      enabled: true,
+      filePath: snapshotFilePath,
+      intervalMs: 0,
+    },
+  });
+  t.after(async () => {
+    await serverB.close();
+  });
+
+  const listResponse = await serverB.inject({
+    method: 'GET',
+    url: '/api/toys',
+  });
+
+  assert.equal(listResponse.statusCode, 200);
+  assert.equal(listResponse.json().length, 1);
+  assert.equal(listResponse.json()[0].name, 'Snapshot Toy');
 });

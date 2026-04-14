@@ -4,16 +4,34 @@ if (process.env.NODE_ENV !== 'production') {
 }
 const { PORT = 8080, HOST = '0.0.0.0' } = process.env;
 
-(async () => {
+let isShuttingDown = false;
 
+async function closeServer(server, signal) {
+  if (isShuttingDown) return;
+
+  isShuttingDown = true;
+  try {
+    await server.close();
+    process.exit(0);
+  } catch (error) {
+    server.log.error({ error, signal }, 'server shutdown failed');
+    process.exit(1);
+  }
+}
+
+(async () => {
   const buildServer = require('../app/index');
   const server = buildServer();
 
   try {
     await server.listen({ port: Number(PORT), host: HOST });
 
-    process.on('SIGINT', () => { server.close(); });
-    process.on('SIGTERM', () => { server.close(); });
+    process.on('SIGINT', () => {
+      closeServer(server, 'SIGINT');
+    });
+    process.on('SIGTERM', () => {
+      closeServer(server, 'SIGTERM');
+    });
   } catch (err) {
     console.log('error', err);
     server.log.error(err);

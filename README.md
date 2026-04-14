@@ -19,9 +19,13 @@ The project intentionally keeps all toy data in memory, so data is lost whenever
 - `HOST`: host interface to bind.
 - `CORS_ORIGINS`: comma-separated list of trusted origins.
 - `LOG_LEVEL`: structured logger level used when running in production.
+- `SNAPSHOT_ENABLED`: enable or disable snapshot persistence.
+- `SNAPSHOT_FILE_PATH`: snapshot file path used for restore/save.
+- `SNAPSHOT_INTERVAL_MS`: auto-save interval in milliseconds.
 
 When `NODE_ENV=production`, requests with an untrusted `Origin` header are rejected.
 Production also enables Fastify's structured JSON logger and returns `x-request-id` and `x-correlation-id` headers for request tracing.
+Snapshot persistence restores the in-memory store on boot and flushes state again during shutdown.
 
 ## Scripts
 
@@ -30,6 +34,12 @@ Production also enables Fastify's structured JSON logger and returns `x-request-
 - `npm run format`: format the repository with Prettier.
 - `npm start`: run once with Node.js.
 - `npm test`: run unit and integration tests with the Node test runner.
+
+## Persistence
+
+- By default, snapshots are enabled outside the test environment.
+- State is written to `./data/memory-store.snapshot.json` unless overridden.
+- The snapshot file contains toy records and in-memory rate-limit state.
 
 ## API notes
 
