@@ -1,13 +1,16 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(process.cwd(), '.env.local') });
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config({ path: path.join(process.cwd(), '.env.local') });
+}
 const { PORT = 8080, HOST = '0.0.0.0' } = process.env;
 
 (async () => {
 
-  const server = require('../app/index');
+  const buildServer = require('../app/index');
+  const server = buildServer();
 
   try {
-    await server.listen(PORT, HOST);
+    await server.listen({ port: Number(PORT), host: HOST });
 
     process.on('SIGINT', () => { server.close(); });
     process.on('SIGTERM', () => { server.close(); });

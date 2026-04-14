@@ -1,7 +1,19 @@
-const debug = require('debug')('toy-api-demo:libs->toys_helpers');
+const debug = require('debug')('toy-api-server-nodejs:libs->toys_helpers');
 const _ = require('lodash-core');
 const { statusCodes, enableStatuses } = require('./variables');
 const toys = [];
+
+const normalizeId = function (id) {
+  if (id === null || typeof id === 'undefined' || id === '')
+    return null;
+
+  const numericId = Number(id);
+  return Number.isInteger(numericId) ? numericId : null;
+};
+
+const resetToys = function () {
+  toys.length = 0;
+};
 
 const getToys = async function (enabled_only = false) {
   enabled_only = enabled_only || false;
@@ -15,15 +27,24 @@ const getToys = async function (enabled_only = false) {
 const saveToy = async function (data) {
   if (!data) {
     debug(`saveToy: No data`);
-    return { code: statusCodes.UNPROCESSABLE_ENTITY };
+    return { code: statusCodes.UNPROCESSABLE_ENTITY, error: 'Toy payload is required' };
   }
 
   if (!data.name) {
     debug(`saveToy: Empty name`);
-    return { code: statusCodes.UNPROCESSABLE_ENTITY };
+    return { code: statusCodes.UNPROCESSABLE_ENTITY, error: 'Toy name is required' };
   }
 
   try {
+    if (typeof data.id !== 'undefined') {
+      const normalizedId = normalizeId(data.id);
+      if (normalizedId === null) {
+        debug('saveToy: Invalid id');
+        return { code: statusCodes.UNPROCESSABLE_ENTITY, error: 'Toy id must be an integer' };
+      }
+      data.id = normalizedId;
+    }
+
     if (!data.created_at)
       data.created_at = new Date();
     if (typeof data.enabled !== 'boolean')
@@ -56,7 +77,7 @@ const saveToy = async function (data) {
       debug(`saveToy: Toy with id: [${data.id}] has been saved`);
     else
       debug(`saveToy: Toy with id: [${data.id}] has been created`);
-    return { code, message: data };
+    return { code, data };
   } catch (err) {
     debug('saveToy: Error', err);
     return { code: statusCodes.INTERNAL_SERVER_ERROR, error: err.message };
@@ -64,21 +85,23 @@ const saveToy = async function (data) {
 };
 
 const deleteToy = async function (id) {
-  if (!id) {
+  const normalizedId = normalizeId(id);
+  if (normalizedId === null) {
     debug(`deleteToy: Id is blank`);
-    return { code: statusCodes.UNPROCESSABLE_ENTITY };
+    return { code: statusCodes.UNPROCESSABLE_ENTITY, error: 'Toy id is required' };
   }
 
   try {
     const arr = await getToys();
-    const existingIndex = arr.findIndex(x => x.id === id);
+    const existingIndex = arr.findIndex(x => x.id === normalizedId);
     if (existingIndex !== -1) {
       arr.splice(existingIndex, 1);
-      debug(`deleteToy: Toy with id: [${id}] has been deleted`);
-    } else
-      debug(`deleteToy: Toy with id: [${id}] not found`);
+      debug(`deleteToy: Toy with id: [${normalizedId}] has been deleted`);
+      return { code: statusCodes.OK, data: { deleted: true } };
+    }
 
-    return { code: statusCodes.OK, message: { deleted: true } };
+    debug(`deleteToy: Toy with id: [${normalizedId}] not found`);
+    return { code: statusCodes.NOT_FOUND, error: `Toy with id: [${normalizedId}] not found` };
   } catch (err) {
     debug('deleteToy: Error', err);
     return { code: statusCodes.INTERNAL_SERVER_ERROR, error: err.message };
@@ -99,21 +122,22 @@ const createToy = async function (data) {
 };
 
 const likeToy = async function (id, likes) {
-  if (!id) {
+  const normalizedId = normalizeId(id);
+  if (normalizedId === null) {
     debug(`likeToy: No id`);
-    return { code: statusCodes.UNPROCESSABLE_ENTITY };
+    return { code: statusCodes.UNPROCESSABLE_ENTITY, error: 'Toy id is required' };
   }
 
   if (typeof (likes) !== 'number') {
     debug(`likeToy: likes is not a valid number`);
-    return { code: statusCodes.UNPROCESSABLE_ENTITY };
+    return { code: statusCodes.UNPROCESSABLE_ENTITY, error: 'Likes must be a number' };
   }
 
   try {
     const arr = await getToys();
     let code = statusCodes.NOT_FOUND;
     let data = null;
-    const existingIndex = arr.findIndex(x => x.id === id);
+    const existingIndex = arr.findIndex(x => x.id === normalizedId);
     if (existingIndex !== -1) {
       code = statusCodes.OK;
       arr[existingIndex].likes = likes;
@@ -122,10 +146,10 @@ const likeToy = async function (id, likes) {
 
     if (code === statusCodes.OK) {
       debug(`likeToy: Toy with id: [${data.id}] has been saved`);
-      return { code, message: data };
+      return { code, data };
     } else {
-      debug(`likeToy: Toy with id: [${id}] not found`);
-      return { code, error: `Toy with id: [${id}] not found` };
+      debug(`likeToy: Toy with id: [${normalizedId}] not found`);
+      return { code, error: `Toy with id: [${normalizedId}] not found` };
     }
   } catch (err) {
     debug('likeToy: Error', err);
@@ -134,19 +158,20 @@ const likeToy = async function (id, likes) {
 };
 
 const getToy = async function (id) {
-  if (!id) {
+  const normalizedId = normalizeId(id);
+  if (normalizedId === null) {
     debug(`getToy: Id is blank`);
-    return { code: statusCodes.UNPROCESSABLE_ENTITY };
+    return { code: statusCodes.UNPROCESSABLE_ENTITY, error: 'Toy id is required' };
   }
 
   try {
     const arr = await getToys();
-    const existingIndex = arr.findIndex(x => x.id === id);
+    const existingIndex = arr.findIndex(x => x.id === normalizedId);
     if (existingIndex !== -1)
-      return { code: statusCodes.OK, message: arr[existingIndex] };
+      return { code: statusCodes.OK, data: arr[existingIndex] };
 
-    debug(`getToy: Toy with id: [${id}] not found`);
-    return { code: statusCodes.NOT_FOUND, error: `Toy with id: [${id}] not found` };
+    debug(`getToy: Toy with id: [${normalizedId}] not found`);
+    return { code: statusCodes.NOT_FOUND, error: `Toy with id: [${normalizedId}] not found` };
   } catch (err) {
     debug('getToy: Error', err);
     return { code: statusCodes.INTERNAL_SERVER_ERROR, error: err.message };
@@ -157,4 +182,5 @@ module.exports = {
   getToys, likeToy,
   saveToy, getToy,
   createToy, deleteToy,
+  resetToys,
 }

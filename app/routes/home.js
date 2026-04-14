@@ -1,4 +1,4 @@
-// const debug = require('debug')('toy-api-demo:->routes->home');
+// const debug = require('debug')('toy-api-server-nodejs:->routes->home');
 const fs = require('fs');
 const path = require('path');
 

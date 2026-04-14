@@ -1,16 +1,15 @@
-const debug = require('debug')('toy-api-demo:->routes->errors');
+const debug = require('debug')('toy-api-server-nodejs:->routes->errors');
 const fp = require('fastify-plugin');
-const { variables: { statusCodes }, } = require('../libs');
+const { http: { sendError }, variables: { statusCodes }, } = require('../libs');
 
 module.exports = fp(async (fastify, options) => {
 
   fastify.decorate('notFound', (request, reply) => {
-    reply.code(statusCodes.NOT_FOUND).send({ error: '404 - Not Found.', message: 'Please go home' });
+    return sendError(reply, statusCodes.NOT_FOUND, 'Route not found');
   });
 
   fastify.decorate('exception', (request, reply) => {
-    // debug('exception', request);
-    reply.code(statusCodes.INTERNAL_SERVER_ERROR).send({ error: '500 - Internal Server Error.', message: 'Please go home' });
+    return sendError(reply, statusCodes.INTERNAL_SERVER_ERROR, 'Internal Server Error');
   });
 
   fastify.get('/404', async (request, reply) => {
@@ -24,9 +23,16 @@ module.exports = fp(async (fastify, options) => {
   fastify.setErrorHandler(async (error, request, reply) => {
     debug('fastify.setErrorHandler', error, request.headers);
     if (error.validation)
-      return reply.code(statusCodes.UNPROCESSABLE_ENTITY).send({ error: error.message });
+      return sendError(reply, statusCodes.UNPROCESSABLE_ENTITY, error.message);
 
-    return fastify.exception(request, reply);
+    const statusCode = Number.isInteger(error.statusCode)
+      ? error.statusCode
+      : statusCodes.INTERNAL_SERVER_ERROR;
+
+    if (statusCode >= statusCodes.INTERNAL_SERVER_ERROR)
+      return fastify.exception(request, reply);
+
+    return sendError(reply, statusCode, error.message || 'Request failed');
   });
 
   fastify.setNotFoundHandler(fastify.notFound);

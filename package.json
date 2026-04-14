@@ -1,24 +1,30 @@
 {
-  "name": "toy-api-demo",
+  "name": "toy-api-server-nodejs",
   "version": "1.0.0",
-  "description": "",
+  "description": "A toy API server built with Node.js and Fastify.",
   "main": "nodemon bin/www",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "DEBUG=toy-api-demo* nodemon bin/www"
+    "dev": "DEBUG=toy-api-server-nodejs* nodemon bin/www",
+    "start": "node bin/www",
+    "test": "node --test"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "nodejs",
+    "fastify",
+    "api-server",
+    "toy-project"
+  ],
+  "author": "Đăng Khoa <i.am@dangkhoa.dev>",
+  "license": "MIT",
   "dependencies": {
-    "@fastify/cors": "^7.0.0",
-    "debug": "^4.3.4",
-    "fastify": "^3.27.4",
-    "fastify-plugin": "^4.0.0",
+    "@fastify/cors": "^11.2.0",
+    "debug": "^4.4.3",
+    "fastify": "^5.8.4",
+    "fastify-plugin": "^5.1.0",
     "lodash-core": "^4.17.19"
   },
   "devDependencies": {
-    "nodemon": "^2.0.15",
-    "dotenv": "^16.0.0"
+    "nodemon": "^3.1.14",
+    "dotenv": "^17.4.2"
   }
 }

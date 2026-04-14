@@ -1,5 +1,5 @@
 const fp = require('fastify-plugin');
-const debug = require('debug')('toy-api-demo:->middleware->logger');
+const debug = require('debug')('toy-api-server-nodejs:->middleware->logger');
 
 module.exports = fp(async (server, opts) => {
 

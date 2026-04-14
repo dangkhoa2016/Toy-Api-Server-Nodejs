@@ -1,35 +1,34 @@
-const debug = require('debug')('toy-api-demo:->index');
+const debug = require('debug')('toy-api-server-nodejs:->index');
+const Fastify = require('fastify');
+const { corsAllowedHeaders, corsExposedHeaders, createCorsOriginValidator, parseCorsOrigins } = require('./libs/cors');
 
-// CommonJs
-const server = require('fastify')({
-  // disableRequestLogging: true,
-  logger: false, pluginTimeout: 10000
-});
+function buildServer(options = {}) {
+  const {
+    corsOrigins = parseCorsOrigins(process.env.CORS_ORIGINS),
+    logger = false,
+    nodeEnv = process.env.NODE_ENV,
+  } = options;
 
-server.register(require('./middleware/logger'));
+  const server = Fastify({
+    logger,
+    pluginTimeout: 10000,
+  });
 
-server.register(require('@fastify/cors'), {
-  exposedHeaders: ['Content-Disposition'],
-  allowedHeaders: ['Content-Type', 'Location'],
-  origin: (origin, cb) => {
-    // allow all
-    cb(null, true);
+  server.register(require('./middleware/logger'));
 
-    /* allow special host
-    if (/localhost/.test(origin)) {
-      //  Request from localhost will pass
-      cb(null, true);
-      return;
-    }
-    // Generate an error on other origins, disabling access
-    cb(new Error("Not allowed"));
-    */ 
-  }
-});
+  server.register(require('@fastify/cors'), {
+    allowedHeaders: corsAllowedHeaders,
+    exposedHeaders: corsExposedHeaders,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    origin: createCorsOriginValidator({ corsOrigins, nodeEnv }),
+  });
 
-server.register(require('./routes/errors'));
-server.register(require('./routes/home'));
-server.register(require('./routes/toys'), { prefix: '/api/toys' });
+  server.register(require('./routes/errors'));
+  server.register(require('./routes/home'));
+  server.register(require('./routes/toys'), { prefix: '/api/toys' });
 
-debug(`Server Started at: ${new Date()}`);
-module.exports = server;
+  debug(`Server builder configured at: ${new Date().toISOString()}`);
+  return server;
+}
+
+module.exports = buildServer;
