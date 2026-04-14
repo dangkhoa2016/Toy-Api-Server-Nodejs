@@ -1,5 +1,7 @@
 # Toy API Server
 
+> 🌐 Language / Ngôn ngữ: **English** | [Tiếng Việt](README.vi.md)
+
 Sample REST API built with Fastify.
 
 The project intentionally keeps all toy data in memory, with optional snapshot persistence to restore state after restart.
