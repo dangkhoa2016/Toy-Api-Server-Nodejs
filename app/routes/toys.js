@@ -40,6 +40,27 @@ const dataSchema = {
   properties: fields,
 };
 
+const toyListRouteSchema = {
+  response: {
+    200: { $ref: 'ToyList#' },
+    500: { $ref: 'ErrorResponse#' },
+  },
+  summary: 'List toys',
+  tags: ['toys'],
+};
+
+const toyResponseSchema = {
+  200: { $ref: 'Toy#' },
+  404: { $ref: 'ErrorResponse#' },
+  422: { $ref: 'ErrorResponse#' },
+};
+
+const toyMutationResponseSchema = {
+  200: { $ref: 'Toy#' },
+  201: { $ref: 'Toy#' },
+  422: { $ref: 'ErrorResponse#' },
+};
+
 async function routes(fastify, options) {
   const toysService = options.service || fastify.toysService;
 
@@ -98,7 +119,7 @@ async function routes(fastify, options) {
   }
 
   //index
-  fastify.get('/', { schema: {} }, async (_request, reply) => {
+  fastify.get('/', { schema: toyListRouteSchema }, async (_request, reply) => {
     try {
       return await toysService.getToys();
     } catch (error) {
@@ -112,17 +133,60 @@ async function routes(fastify, options) {
   });
 
   //show
-  fastify.get('/:id', { schema: { params: paramSchema } }, getToy);
+  fastify.get(
+    '/:id',
+    {
+      schema: {
+        params: paramSchema,
+        response: toyResponseSchema,
+        summary: 'Get a toy by id',
+        tags: ['toys'],
+      },
+    },
+    getToy,
+  );
 
   //delete
-  fastify.delete('/:id', { schema: { params: paramSchema } }, deleteToy);
+  fastify.delete(
+    '/:id',
+    {
+      schema: {
+        params: paramSchema,
+        response: {
+          200: { $ref: 'DeleteResponse#' },
+          404: { $ref: 'ErrorResponse#' },
+          422: { $ref: 'ErrorResponse#' },
+        },
+        summary: 'Delete a toy',
+        tags: ['toys'],
+      },
+    },
+    deleteToy,
+  );
 
   //create
-  fastify.post('/', { schema: { body: dataSchema } }, saveToy);
+  fastify.post(
+    '/',
+    {
+      schema: {
+        body: dataSchema,
+        response: toyMutationResponseSchema,
+        summary: 'Create a toy',
+        tags: ['toys'],
+      },
+    },
+    saveToy,
+  );
 
   //update
   const updateDataOptions = {
-    schema: { params: paramSchema, body: dataSchema },
+    schema: {
+      params: paramSchema,
+      body: dataSchema,
+      response: toyMutationResponseSchema,
+      summary: 'Update a toy',
+      tags: ['toys'],
+    },
   };
   updateActions.forEach((action) => {
     fastify[action]('/:id', updateDataOptions, saveToy);
@@ -132,32 +196,53 @@ async function routes(fastify, options) {
   updateActions.forEach((action) => {
     fastify[action](
       '/:id/likes',
-      { schema: { params: paramSchema, body: likeSchema } },
+      {
+        schema: {
+          params: paramSchema,
+          body: likeSchema,
+          response: toyResponseSchema,
+          summary: 'Update toy likes',
+          tags: ['toys'],
+        },
+      },
       likeToy,
     );
   });
 
   //export
-  fastify.get('/export', async (_request, reply) => {
-    let result;
-    try {
-      result = await toysService.getToys();
-    } catch (error) {
-      debug('/export Error getToys', error);
-      return sendError(
-        reply,
-        statusCodes.INTERNAL_SERVER_ERROR,
-        'Unable to export toys',
-      );
-    }
+  fastify.get(
+    '/export',
+    {
+      schema: {
+        response: {
+          200: { type: 'string', format: 'binary' },
+          500: { $ref: 'ErrorResponse#' },
+        },
+        summary: 'Export toys as JSON file',
+        tags: ['toys'],
+      },
+    },
+    async (_request, reply) => {
+      let result;
+      try {
+        result = await toysService.getToys();
+      } catch (error) {
+        debug('/export Error getToys', error);
+        return sendError(
+          reply,
+          statusCodes.INTERNAL_SERVER_ERROR,
+          'Unable to export toys',
+        );
+      }
 
-    const fileName = `export-toys-${new Date().valueOf()}.json`;
-    reply.header('Content-Disposition', `attachment; filename=${fileName}`);
-    reply.type('application/json');
+      const fileName = `export-toys-${new Date().valueOf()}.json`;
+      reply.header('Content-Disposition', `attachment; filename=${fileName}`);
+      reply.type('application/json');
 
-    const buf = Buffer.from(JSON.stringify(result));
-    reply.send(buf);
-  });
+      const buf = Buffer.from(JSON.stringify(result));
+      reply.send(buf);
+    },
+  );
 }
 
 module.exports = routes;

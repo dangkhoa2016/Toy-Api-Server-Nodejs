@@ -8,6 +8,7 @@ const {
   createCorsOriginValidator,
   parseCorsOrigins,
 } = require('./libs/cors');
+const { registerApiSchemas } = require('./libs/api_schemas');
 const ToysService = require('./services/toys_service');
 const MemoryStore = require('./stores/memory_store');
 
@@ -126,6 +127,39 @@ function buildServer(options = {}) {
 
   server.decorate('toyStore', resolvedToyStore);
   server.decorate('toysService', resolvedToysService);
+
+  server.register(require('@fastify/swagger'), {
+    openapi: {
+      info: {
+        title: 'Toy API Server',
+        version: '1.0.0',
+        description:
+          'Fastify-based toy API with in-memory storage, snapshot persistence, and rate limiting.',
+      },
+      tags: [
+        { name: 'system', description: 'Operational endpoints' },
+        { name: 'toys', description: 'Toy resource operations' },
+      ],
+    },
+  });
+
+  server.register(require('@fastify/swagger-ui'), {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: false,
+    },
+  });
+
+  registerApiSchemas(server);
+
+  server.get(
+    '/openapi.json',
+    { schema: { hide: true } },
+    async (_request, reply) => {
+      reply.type('application/json').send(server.swagger());
+    },
+  );
 
   server.addHook('onReady', async () => {
     if (!resolvedToyStore.hasSnapshot()) return;

@@ -40,6 +40,11 @@ Rate limiting is in-memory and can be snapshotted with the rest of store state.
 - `npm start`: run once with Node.js.
 - `npm test`: run unit and integration tests with the Node test runner.
 
+## API Docs
+
+- Swagger UI: `/docs/`
+- OpenAPI JSON: `/openapi.json`
+
 ## Persistence
 
 - By default, snapshots are enabled outside the test environment.
@@ -65,6 +70,76 @@ Rate limiting is in-memory and can be snapshotted with the rest of store state.
     "message": "Route not found"
   }
 }
+```
+
+## curl Examples
+
+Start the server first:
+
+```bash
+npm run dev
+```
+
+List toys:
+
+```bash
+curl http://localhost:8080/api/toys
+```
+
+Create a toy:
+
+```bash
+curl -X POST http://localhost:8080/api/toys \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "name": "Toy Robot",
+      "image": "https://example.com/robot.png",
+      "likes": 0
+   }'
+```
+
+Get a toy by id:
+
+```bash
+curl http://localhost:8080/api/toys/1
+```
+
+Update a toy:
+
+```bash
+curl -X PUT http://localhost:8080/api/toys/1 \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "name": "Toy Boat",
+      "image": "https://example.com/boat.png",
+      "likes": 3
+   }'
+```
+
+Update likes only:
+
+```bash
+curl -X PATCH http://localhost:8080/api/toys/1/likes \
+   -H 'Content-Type: application/json' \
+   -d '{"likes": 5}'
+```
+
+Delete a toy:
+
+```bash
+curl -X DELETE http://localhost:8080/api/toys/1
+```
+
+Export toys as JSON:
+
+```bash
+curl -OJ http://localhost:8080/api/toys/export
+```
+
+Fetch the OpenAPI document:
+
+```bash
+curl http://localhost:8080/openapi.json
 ```
 
 ## CI

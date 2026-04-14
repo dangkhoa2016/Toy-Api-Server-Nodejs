@@ -357,3 +357,29 @@ test('server restores toys from snapshot on restart', async (t) => {
   assert.equal(listResponse.json().length, 1);
   assert.equal(listResponse.json()[0].name, 'Snapshot Toy');
 });
+
+test('openapi json and swagger ui are exposed', async (t) => {
+  const server = await createServer({ nodeEnv: 'test' });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const openApiResponse = await server.inject({
+    method: 'GET',
+    url: '/openapi.json',
+  });
+  const docsResponse = await server.inject({
+    method: 'GET',
+    url: '/docs/',
+  });
+
+  assert.equal(openApiResponse.statusCode, 200);
+  assert.equal(openApiResponse.json().openapi, '3.0.3');
+  assert.ok(
+    openApiResponse.json().paths['/api/toys'] ||
+      openApiResponse.json().paths['/api/toys/'],
+  );
+
+  assert.equal(docsResponse.statusCode, 200);
+  assert.match(docsResponse.headers['content-type'], /text\/html/i);
+});

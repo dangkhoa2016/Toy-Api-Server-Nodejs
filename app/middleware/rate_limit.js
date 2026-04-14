@@ -5,7 +5,7 @@ const {
 } = require('../libs');
 
 const DEFAULT_SKIPPED_PATHS = new Set([
-  '/healthz',
+  '/health',
   '/favicon.ico',
   '/favicon.png',
 ]);
