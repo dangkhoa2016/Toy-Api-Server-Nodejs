@@ -18,8 +18,10 @@ The project intentionally keeps all toy data in memory, so data is lost whenever
 - `PORT`: port to listen on.
 - `HOST`: host interface to bind.
 - `CORS_ORIGINS`: comma-separated list of trusted origins.
+- `LOG_LEVEL`: structured logger level used when running in production.
 
 When `NODE_ENV=production`, requests with an untrusted `Origin` header are rejected.
+Production also enables Fastify's structured JSON logger and returns `x-request-id` and `x-correlation-id` headers for request tracing.
 
 ## Scripts
 
@@ -33,6 +35,7 @@ When `NODE_ENV=production`, requests with an untrusted `Origin` header are rejec
 
 - `DELETE /api/toys/:id` is the only supported delete endpoint.
 - `GET /healthz` returns a lightweight service health payload.
+- Create and update requests enforce `likes >= 0`, a bounded name length, and an absolute image URI.
 - Error responses are standardized as:
 
 ```json

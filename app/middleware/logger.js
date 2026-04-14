@@ -1,36 +1,82 @@
 const fp = require('fastify-plugin');
-const debug = require('debug')('toy-api-server-nodejs:->middleware->logger');
 
 module.exports = fp(async (server, _opts) => {
-  const now = () => Date.now();
+  server.decorateRequest('correlationId', null);
+  server.decorateRequest('startTime', null);
 
-  /*
-  server.addHook('preSerialization', function (req, reply, done) {
-    debug('preSerialization', reply);
-  });
-  */
+  const getHeaderValue = (value) => {
+    if (Array.isArray(value)) return value[0];
 
-  server.addHook('preHandler', async function (request, reply) {
-    reply.startTime = now();
-    if (request.body) debug({ info: 'parse body', body: request.body });
+    return value;
+  };
+
+  server.addHook('preHandler', async function (request, _reply) {
+    if (request.body) {
+      request.log.debug(
+        {
+          correlationId: request.correlationId,
+          event: 'request.body.parsed',
+          requestId: request.id,
+        },
+        'request body parsed',
+      );
+    }
   });
 
   server.addHook('onRequest', async (request, reply) => {
-    reply.startTime = now();
-    debug({
-      info: 'received request',
-      url: request.raw.url,
-      method: request.method,
-      id: request.id,
-    });
+    request.startTime = process.hrtime.bigint();
+    request.correlationId =
+      getHeaderValue(request.headers['x-correlation-id']) || request.id;
+
+    reply.header('x-correlation-id', request.correlationId);
+    reply.header('x-request-id', request.id);
+
+    request.log.info(
+      {
+        correlationId: request.correlationId,
+        event: 'request.received',
+        method: request.method,
+        requestId: request.id,
+        url: request.raw.url,
+      },
+      'request received',
+    );
+  });
+
+  server.addHook('onError', async (request, reply, error) => {
+    const statusCode = Number.isInteger(error.statusCode)
+      ? error.statusCode
+      : reply.raw.statusCode;
+
+    request.log.error(
+      {
+        correlationId: request.correlationId,
+        error,
+        event: 'request.failed',
+        requestId: request.id,
+        statusCode,
+        url: request.raw.url,
+      },
+      'request failed',
+    );
   });
 
   server.addHook('onResponse', async (request, reply) => {
-    debug({
-      info: 'response completed',
-      url: request.raw.url, // add url to response as well for simple correlating
-      statusCode: reply.raw.statusCode,
-      durationMs: now() - reply.startTime, // recreate duration in ms - use process.hrtime() - https://nodejs.org/api/process.html#process_process_hrtime_bigint for most accuracy
-    });
+    const durationMs = request.startTime
+      ? Number(process.hrtime.bigint() - request.startTime) / 1000000
+      : undefined;
+
+    request.log.info(
+      {
+        correlationId: request.correlationId,
+        durationMs,
+        event: 'request.completed',
+        method: request.method,
+        requestId: request.id,
+        statusCode: reply.raw.statusCode,
+        url: request.raw.url,
+      },
+      'request completed',
+    );
   });
 });

@@ -1,7 +1,16 @@
 const { statusCodes } = require('./variables');
 
-const corsAllowedHeaders = ['Content-Type', 'Location'];
-const corsExposedHeaders = ['Content-Disposition'];
+const corsAllowedHeaders = [
+  'Content-Type',
+  'Location',
+  'X-Correlation-Id',
+  'X-Request-Id',
+];
+const corsExposedHeaders = [
+  'Content-Disposition',
+  'X-Correlation-Id',
+  'X-Request-Id',
+];
 
 function parseCorsOrigins(value) {
   if (!value) return [];

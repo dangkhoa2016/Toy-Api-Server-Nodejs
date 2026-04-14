@@ -1,4 +1,5 @@
 const debug = require('debug')('toy-api-server-nodejs:->index');
+const { randomUUID } = require('node:crypto');
 const Fastify = require('fastify');
 const {
   corsAllowedHeaders,
@@ -9,18 +10,42 @@ const {
 const ToysService = require('./services/toys_service');
 const MemoryStore = require('./stores/memory_store');
 
+function resolveLoggerOptions(logger, nodeEnv) {
+  if (logger === false) return false;
+
+  if (logger && typeof logger === 'object') return logger;
+
+  if (logger === true) {
+    return {
+      level:
+        process.env.LOG_LEVEL || (nodeEnv === 'production' ? 'info' : 'debug'),
+    };
+  }
+
+  if (nodeEnv === 'production') {
+    return {
+      level: process.env.LOG_LEVEL || 'info',
+    };
+  }
+
+  return false;
+}
+
 function buildServer(options = {}) {
   const {
     corsOrigins = parseCorsOrigins(process.env.CORS_ORIGINS),
-    logger = false,
+    logger,
     nodeEnv = process.env.NODE_ENV,
     toyStore = new MemoryStore(),
     toysService = new ToysService({ store: toyStore }),
   } = options;
 
   const server = Fastify({
-    logger,
+    disableRequestLogging: true,
+    genReqId: () => randomUUID(),
+    logger: resolveLoggerOptions(logger, nodeEnv),
     pluginTimeout: 10000,
+    requestIdHeader: 'x-request-id',
   });
 
   server.decorate('toyStore', toyStore);

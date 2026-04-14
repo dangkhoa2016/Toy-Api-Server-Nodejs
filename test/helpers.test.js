@@ -10,7 +10,7 @@ beforeEach(() => {
 test('createToy creates a new toy in memory', async () => {
   const result = await toysHelpers.createToy({
     name: 'Robot',
-    image: 'robot.png',
+    image: 'https://example.com/robot.png',
     likes: 1,
   });
 
@@ -25,13 +25,13 @@ test('createToy creates a new toy in memory', async () => {
 test('saveToy updates an existing toy', async () => {
   const created = await toysHelpers.createToy({
     name: 'Robot',
-    image: 'robot.png',
+    image: 'https://example.com/robot.png',
     likes: 1,
   });
   const updated = await toysHelpers.saveToy({
     id: created.data.id,
     name: 'Drone',
-    image: 'drone.png',
+    image: 'https://example.com/drone.png',
     likes: 4,
   });
 
@@ -44,7 +44,7 @@ test('saveToy updates an existing toy', async () => {
 test('getToy returns a toy by id', async () => {
   const created = await toysHelpers.createToy({
     name: 'Train',
-    image: 'train.png',
+    image: 'https://example.com/train.png',
     likes: 2,
   });
   const result = await toysHelpers.getToy(created.data.id);
@@ -56,7 +56,7 @@ test('getToy returns a toy by id', async () => {
 test('likeToy updates likes for an existing toy', async () => {
   const created = await toysHelpers.createToy({
     name: 'Puzzle',
-    image: 'puzzle.png',
+    image: 'https://example.com/puzzle.png',
     likes: 0,
   });
   const result = await toysHelpers.likeToy(created.data.id, 9);
@@ -68,7 +68,7 @@ test('likeToy updates likes for an existing toy', async () => {
 test('deleteToy removes an existing toy and returns 404 for missing ids', async () => {
   const created = await toysHelpers.createToy({
     name: 'Blocks',
-    image: 'blocks.png',
+    image: 'https://example.com/blocks.png',
     likes: 0,
   });
   const deleted = await toysHelpers.deleteToy(created.data.id);
@@ -78,4 +78,29 @@ test('deleteToy removes an existing toy and returns 404 for missing ids', async 
   assert.deepEqual(deleted.data, { deleted: true });
   assert.equal(missing.code, 404);
   assert.match(missing.error, /not found/i);
+});
+
+test('createToy rejects invalid payload values', async () => {
+  const shortName = await toysHelpers.createToy({
+    name: 'A',
+    image: 'https://example.com/robot.png',
+    likes: 1,
+  });
+  const invalidImage = await toysHelpers.createToy({
+    name: 'Robot',
+    image: 'robot.png',
+    likes: 1,
+  });
+  const invalidLikes = await toysHelpers.createToy({
+    name: 'Robot',
+    image: 'https://example.com/robot.png',
+    likes: -1,
+  });
+
+  assert.equal(shortName.code, 422);
+  assert.match(shortName.error, /at least/i);
+  assert.equal(invalidImage.code, 422);
+  assert.match(invalidImage.error, /valid URI/i);
+  assert.equal(invalidLikes.code, 422);
+  assert.match(invalidLikes.error, /greater than or equal to 0/i);
 });

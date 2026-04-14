@@ -1,34 +1,41 @@
 const debug = require('debug')('toy-api-server-nodejs:->routes->toys');
 const {
   http: { sendError },
-  variables: { statusCodes },
+  variables: { statusCodes, toyConstraints },
 } = require('../libs');
 const updateActions = ['post', 'put', 'patch'];
 
 const paramSchema = {
   type: 'object',
+  additionalProperties: false,
   properties: {
-    id: { type: 'integer' },
+    id: { type: 'integer', minimum: 1 },
   },
   required: ['id'],
 };
 
 const likeSchema = {
   type: 'object',
+  additionalProperties: false,
   properties: {
-    likes: { type: 'integer' },
+    likes: { type: 'integer', minimum: 0 },
   },
   required: ['likes'],
 };
 
 const fields = {
-  name: { type: 'string' },
-  image: { type: 'string' },
-  likes: { type: 'number' },
+  name: {
+    type: 'string',
+    minLength: toyConstraints.minNameLength,
+    maxLength: toyConstraints.maxNameLength,
+  },
+  image: { type: 'string', format: 'uri' },
+  likes: { type: 'integer', minimum: 0 },
 };
 
 const dataSchema = {
   type: 'object',
+  additionalProperties: false,
   required: ['name', 'image'],
   properties: fields,
 };

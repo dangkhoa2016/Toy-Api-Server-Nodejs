@@ -1,10 +1,53 @@
-const { statusCodes } = require('../libs/variables');
+const { statusCodes, toyConstraints } = require('../libs/variables');
 
 function normalizeId(id) {
   if (id === null || typeof id === 'undefined' || id === '') return null;
 
   const numericId = Number(id);
   return Number.isInteger(numericId) ? numericId : null;
+}
+
+function isValidImageUri(image) {
+  try {
+    const parsedUrl = new URL(image);
+    return toyConstraints.imageProtocols.includes(parsedUrl.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function validateName(name) {
+  if (typeof name !== 'string') return 'Toy name is required';
+
+  const trimmedName = name.trim();
+  if (!trimmedName) return 'Toy name is required';
+
+  if (trimmedName.length < toyConstraints.minNameLength) {
+    return `Toy name must be at least ${toyConstraints.minNameLength} characters long`;
+  }
+
+  if (trimmedName.length > toyConstraints.maxNameLength) {
+    return `Toy name must be at most ${toyConstraints.maxNameLength} characters long`;
+  }
+
+  return null;
+}
+
+function validateLikes(likes) {
+  if (typeof likes !== 'undefined' && (!Number.isInteger(likes) || likes < 0)) {
+    return 'Likes must be an integer greater than or equal to 0';
+  }
+
+  return null;
+}
+
+function validateImage(image) {
+  if (typeof image !== 'string' || !image.trim())
+    return 'Toy image is required';
+
+  if (!isValidImageUri(image)) return 'Toy image must be a valid URI';
+
+  return null;
 }
 
 class ToysService {
@@ -27,10 +70,25 @@ class ToysService {
         error: 'Toy payload is required',
       };
 
-    if (!data.name)
+    const nameError = validateName(data.name);
+    if (nameError)
       return {
         code: statusCodes.UNPROCESSABLE_ENTITY,
-        error: 'Toy name is required',
+        error: nameError,
+      };
+
+    const imageError = validateImage(data.image);
+    if (imageError)
+      return {
+        code: statusCodes.UNPROCESSABLE_ENTITY,
+        error: imageError,
+      };
+
+    const likesError = validateLikes(data.likes);
+    if (likesError)
+      return {
+        code: statusCodes.UNPROCESSABLE_ENTITY,
+        error: likesError,
       };
 
     const payload = { ...data };
@@ -47,6 +105,9 @@ class ToysService {
       payload.id = normalizedId;
       existingToy = this.store.findToyById(normalizedId);
     }
+
+    payload.image = payload.image.trim();
+    payload.name = payload.name.trim();
 
     const timestamp = new Date();
     const createdAt = existingToy
@@ -138,10 +199,11 @@ class ToysService {
         error: 'Toy id is required',
       };
 
-    if (typeof likes !== 'number')
+    const likesError = validateLikes(likes);
+    if (likesError)
       return {
         code: statusCodes.UNPROCESSABLE_ENTITY,
-        error: 'Likes must be a number',
+        error: likesError,
       };
 
     const toy = this.store.findToyById(normalizedId);

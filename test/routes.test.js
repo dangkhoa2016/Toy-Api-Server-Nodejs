@@ -21,7 +21,7 @@ test('toy routes support CRUD and like flows', async (t) => {
   const createdResponse = await server.inject({
     method: 'POST',
     url: '/api/toys',
-    payload: { name: 'Car', image: 'car.png', likes: 2 },
+    payload: { name: 'Car', image: 'https://example.com/car.png', likes: 2 },
   });
 
   assert.equal(createdResponse.statusCode, 201);
@@ -42,7 +42,11 @@ test('toy routes support CRUD and like flows', async (t) => {
   const updateResponse = await server.inject({
     method: 'PUT',
     url: '/api/toys/1',
-    payload: { name: 'Boat', image: 'boat.png', likes: 3 },
+    payload: {
+      name: 'Boat',
+      image: 'https://example.com/boat.png',
+      likes: 3,
+    },
   });
   assert.equal(updateResponse.statusCode, 200);
   assert.equal(updateResponse.json().name, 'Boat');
@@ -98,6 +102,62 @@ test('toy routes return standardized validation errors', async (t) => {
   assert.match(payload.error.message, /name/i);
 });
 
+test('toy routes validate name length, likes minimum, and image URI', async (t) => {
+  const server = await createServer({ nodeEnv: 'test' });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const shortNameResponse = await server.inject({
+    method: 'POST',
+    url: '/api/toys',
+    payload: {
+      name: 'A',
+      image: 'https://example.com/car.png',
+      likes: 1,
+    },
+  });
+  const invalidImageResponse = await server.inject({
+    method: 'POST',
+    url: '/api/toys',
+    payload: {
+      name: 'Valid Name',
+      image: 'car.png',
+      likes: 1,
+    },
+  });
+
+  const createdResponse = await server.inject({
+    method: 'POST',
+    url: '/api/toys',
+    payload: {
+      name: 'Valid Name',
+      image: 'https://example.com/car.png',
+      likes: 1,
+    },
+  });
+  assert.equal(createdResponse.statusCode, 201);
+
+  const invalidLikesResponse = await server.inject({
+    method: 'PATCH',
+    url: '/api/toys/1/likes',
+    payload: { likes: -1 },
+  });
+
+  assert.equal(shortNameResponse.statusCode, 422);
+  assert.match(
+    shortNameResponse.json().error.message,
+    /must NOT have fewer than 2 characters/i,
+  );
+  assert.equal(invalidImageResponse.statusCode, 422);
+  assert.match(
+    invalidImageResponse.json().error.message,
+    /must match format "uri"/i,
+  );
+  assert.equal(invalidLikesResponse.statusCode, 422);
+  assert.match(invalidLikesResponse.json().error.message, /must be >= 0/i);
+});
+
 test('health returns service status', async (t) => {
   const server = await createServer({ nodeEnv: 'test' });
   t.after(async () => {
@@ -111,6 +171,26 @@ test('health returns service status', async (t) => {
   assert.equal(payload.status, 'ok');
   assert.equal(typeof payload.timestamp, 'string');
   assert.equal(typeof payload.uptime, 'number');
+});
+
+test('responses expose request id and correlation id headers', async (t) => {
+  const server = await createServer({ nodeEnv: 'production' });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const response = await server.inject({
+    method: 'GET',
+    url: '/health',
+    headers: {
+      'x-correlation-id': 'corr-123',
+      'x-request-id': 'req-456',
+    },
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers['x-correlation-id'], 'corr-123');
+  assert.equal(response.headers['x-request-id'], 'req-456');
 });
 
 test('cors allows trusted origins in production and blocks others', async (t) => {
