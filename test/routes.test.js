@@ -11,6 +11,14 @@ async function createServer(options = {}) {
   toysHelpers.resetToys();
 
   const server = buildServer({
+    rateLimit:
+      typeof options.rateLimit === 'undefined'
+        ? { enabled: false }
+        : options.rateLimit,
+    securityHeaders:
+      typeof options.securityHeaders === 'undefined'
+        ? { enabled: false }
+        : options.securityHeaders,
     snapshot:
       typeof options.snapshot === 'undefined'
         ? { enabled: false }
@@ -200,6 +208,64 @@ test('responses expose request id and correlation id headers', async (t) => {
   assert.equal(response.statusCode, 200);
   assert.equal(response.headers['x-correlation-id'], 'corr-123');
   assert.equal(response.headers['x-request-id'], 'req-456');
+});
+
+test('security headers are enabled when configured', async (t) => {
+  const server = await createServer({
+    nodeEnv: 'production',
+    securityHeaders: { enabled: true },
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const response = await server.inject({ method: 'GET', url: '/healthz' });
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers['x-frame-options'], 'SAMEORIGIN');
+  assert.equal(response.headers['x-content-type-options'], 'nosniff');
+  assert.equal(typeof response.headers['referrer-policy'], 'string');
+});
+
+test('rate limiting blocks requests after threshold and exposes headers', async (t) => {
+  const server = await createServer({
+    nodeEnv: 'production',
+    rateLimit: {
+      enabled: true,
+      max: 2,
+      windowMs: 60000,
+    },
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const firstResponse = await server.inject({
+    method: 'GET',
+    url: '/api/toys',
+  });
+  const secondResponse = await server.inject({
+    method: 'GET',
+    url: '/api/toys',
+  });
+  const thirdResponse = await server.inject({
+    method: 'GET',
+    url: '/api/toys',
+  });
+
+  assert.equal(firstResponse.statusCode, 200);
+  assert.equal(firstResponse.headers['x-ratelimit-limit'], '2');
+  assert.equal(firstResponse.headers['x-ratelimit-remaining'], '1');
+
+  assert.equal(secondResponse.statusCode, 200);
+  assert.equal(secondResponse.headers['x-ratelimit-remaining'], '0');
+
+  assert.equal(thirdResponse.statusCode, 429);
+  assert.equal(thirdResponse.json().error.statusCode, 429);
+  assert.equal(thirdResponse.json().error.message, 'Rate limit exceeded');
+  assert.equal(thirdResponse.headers['x-ratelimit-limit'], '2');
+  assert.equal(thirdResponse.headers['x-ratelimit-remaining'], '0');
+  assert.equal(typeof thirdResponse.headers['retry-after'], 'string');
 });
 
 test('cors allows trusted origins in production and blocks others', async (t) => {

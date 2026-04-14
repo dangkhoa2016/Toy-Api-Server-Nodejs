@@ -54,16 +54,63 @@ function resolveSnapshotOptions(snapshotOptions = {}, nodeEnv) {
   };
 }
 
+function resolveRateLimitOptions(rateLimitOptions = {}, nodeEnv) {
+  const envEnabled = process.env.RATE_LIMIT_ENABLED;
+  const enabled =
+    typeof rateLimitOptions.enabled === 'boolean'
+      ? rateLimitOptions.enabled
+      : envEnabled
+        ? envEnabled !== 'false'
+        : nodeEnv !== 'test';
+  const max = Number(rateLimitOptions.max ?? process.env.RATE_LIMIT_MAX ?? 100);
+  const windowMs = Number(
+    rateLimitOptions.windowMs ?? process.env.RATE_LIMIT_WINDOW_MS ?? 60000,
+  );
+
+  return {
+    enabled,
+    max: Number.isFinite(max) ? Math.max(1, Math.floor(max)) : 100,
+    windowMs: Number.isFinite(windowMs)
+      ? Math.max(1000, Math.floor(windowMs))
+      : 60000,
+  };
+}
+
+function resolveSecurityHeadersOptions(securityHeadersOptions = {}, nodeEnv) {
+  const envEnabled = process.env.SECURITY_HEADERS_ENABLED;
+  const enabled =
+    typeof securityHeadersOptions.enabled === 'boolean'
+      ? securityHeadersOptions.enabled
+      : envEnabled
+        ? envEnabled !== 'false'
+        : nodeEnv !== 'test';
+
+  return {
+    enabled,
+    options: {
+      contentSecurityPolicy: false,
+      ...(securityHeadersOptions.options || {}),
+    },
+  };
+}
+
 function buildServer(options = {}) {
   const {
     corsOrigins = parseCorsOrigins(process.env.CORS_ORIGINS),
     logger,
     nodeEnv = process.env.NODE_ENV,
+    rateLimit,
+    securityHeaders,
     snapshot,
     toyStore,
     toysService,
   } = options;
   const resolvedSnapshotOptions = resolveSnapshotOptions(snapshot, nodeEnv);
+  const resolvedRateLimitOptions = resolveRateLimitOptions(rateLimit, nodeEnv);
+  const resolvedSecurityHeadersOptions = resolveSecurityHeadersOptions(
+    securityHeaders,
+    nodeEnv,
+  );
   const resolvedToyStore =
     toyStore || new MemoryStore({ snapshot: resolvedSnapshotOptions });
   const resolvedToysService =
@@ -138,6 +185,18 @@ function buildServer(options = {}) {
   });
 
   server.register(require('./middleware/logger'));
+
+  if (resolvedSecurityHeadersOptions.enabled) {
+    server.register(
+      require('@fastify/helmet'),
+      resolvedSecurityHeadersOptions.options,
+    );
+  }
+
+  server.register(require('./middleware/rate_limit'), {
+    ...resolvedRateLimitOptions,
+    store: resolvedToyStore,
+  });
 
   server.register(require('@fastify/cors'), {
     allowedHeaders: corsAllowedHeaders,
