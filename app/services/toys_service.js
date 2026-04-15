@@ -1,4 +1,8 @@
-const { statusCodes, toyConstraints } = require('../libs/variables');
+const {
+  getToyPolicyDefaults,
+  statusCodes,
+  toyConstraints,
+} = require('../libs/variables');
 const debug = require('debug')('toy-api-server-nodejs:->services->toys-service');
 
 function normalizePositiveInteger(value, fallback) {
@@ -60,19 +64,51 @@ function validateImage(image) {
 
 class ToysService {
   constructor(options = {}) {
-    const { maxToysPerIp, store, toyTtlMs } = options;
+    const toyPolicyDefaults = getToyPolicyDefaults();
+    const { maxToysPerIp, seedMaxToysPerIp, seedWindowMs, store, toyTtlMs } = options;
 
     if (!store) throw new Error('ToysService requires a store');
 
     this.maxToysPerIp = normalizePositiveInteger(
-      maxToysPerIp ?? process.env.MAX_TOYS_PER_IP ?? 5,
-      5,
+      maxToysPerIp ?? process.env.MAX_TOYS_PER_IP ?? toyPolicyDefaults.maxToysPerIp,
+      toyPolicyDefaults.maxToysPerIp,
+    );
+    this.seedMaxToysPerIp = normalizePositiveInteger(
+      seedMaxToysPerIp ??
+        process.env.SEED_MAX_TOYS_PER_IP ??
+        toyPolicyDefaults.seedMaxToysPerIp,
+      toyPolicyDefaults.seedMaxToysPerIp,
+    );
+    this.seedWindowMs = normalizePositiveInteger(
+      seedWindowMs ?? process.env.SEED_WINDOW_MS ?? toyPolicyDefaults.seedWindowMs,
+      toyPolicyDefaults.seedWindowMs,
     );
     this.store = store;
     this.toyTtlMs = normalizePositiveInteger(
-      toyTtlMs ?? process.env.TOY_TTL_MS ?? 15 * 60 * 1000,
-      15 * 60 * 1000,
+      toyTtlMs ?? process.env.TOY_TTL_MS ?? toyPolicyDefaults.toyTtlMs,
+      toyPolicyDefaults.toyTtlMs,
     );
+  }
+
+  getSeedState(clientKey, referenceTime = Date.now()) {
+    const seedState = this.store.getSeedState(clientKey);
+    if (!seedState) return null;
+
+    const firstCreateAt = Number(seedState.firstCreateAt);
+    const successfulCreates = Number(seedState.successfulCreates);
+    if (!Number.isFinite(firstCreateAt) || !Number.isFinite(successfulCreates)) {
+      return null;
+    }
+
+    const seedExpiresAt = firstCreateAt + this.seedWindowMs;
+    return {
+      firstCreateAt,
+      isActive:
+        referenceTime < seedExpiresAt &&
+        successfulCreates < this.seedMaxToysPerIp,
+      seedExpiresAt,
+      successfulCreates,
+    };
   }
 
   pruneExpiredToys(referenceTime = new Date()) {
@@ -186,25 +222,42 @@ class ToysService {
       };
 
     const clientKey = options.clientKey || 'unknown';
+    const now = Date.now();
+    const seedState = this.getSeedState(clientKey, now);
+    const allowedToyLimit = seedState?.isActive
+      ? this.seedMaxToysPerIp
+      : this.maxToysPerIp;
     const activeToyCount = this.store.countToysByClientKey(clientKey);
-    if (activeToyCount >= this.maxToysPerIp)
+    if (activeToyCount >= allowedToyLimit)
       return {
         code: statusCodes.TOO_MANY_REQUESTS,
         error: 'Toy quota exceeded for this IP address',
         details: {
-          limit: this.maxToysPerIp,
+          defaultLimit: this.maxToysPerIp,
+          limit: allowedToyLimit,
+          seedLimit: this.seedMaxToysPerIp,
+          seedMode: Boolean(seedState?.isActive),
+          seedWindowMs: this.seedWindowMs,
           ttlMs: this.toyTtlMs,
         },
       };
 
     const payload = { ...data };
     payload.created_by_ip = clientKey;
-    payload.expires_at = new Date(Date.now() + this.toyTtlMs);
+    payload.expires_at = new Date(now + this.toyTtlMs);
     delete payload.id;
     delete payload.created_at;
     delete payload.updated_at;
 
-    return this.saveToy(payload);
+    const result = await this.saveToy(payload);
+    if (result.data) {
+      this.store.setSeedState(clientKey, {
+        firstCreateAt: seedState?.firstCreateAt ?? now,
+        successfulCreates: (seedState?.successfulCreates ?? 0) + 1,
+      });
+    }
+
+    return result;
   }
 
   async deleteToy(id) {

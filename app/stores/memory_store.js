@@ -1,9 +1,10 @@
 class MemoryStore {
   constructor(options = {}) {
-    const { toys = [], rateLimits = new Map() } = options;
+    const { toys = [], rateLimits = new Map(), seedStates = new Map() } = options;
 
     this.toys = [...toys];
     this.rateLimits = rateLimits;
+    this.seedStates = seedStates;
   }
 
   isToyExpired(toy, referenceTime = new Date()) {
@@ -85,6 +86,15 @@ class MemoryStore {
     return value;
   }
 
+  getSeedState(key) {
+    return this.seedStates.get(key);
+  }
+
+  setSeedState(key, value) {
+    this.seedStates.set(key, value);
+    return value;
+  }
+
   pruneExpiredToys(referenceTime = new Date()) {
     const initialCount = this.toys.length;
     this.toys = this.toys.filter(
@@ -107,9 +117,33 @@ class MemoryStore {
     return removedCount;
   }
 
+  cleanupSeedStates(referenceTime = Date.now(), options = {}) {
+    const { retentionMs = 0 } = options;
+    let removedCount = 0;
+
+    for (const [key, state] of this.seedStates.entries()) {
+      const firstCreateAt = Number(state?.firstCreateAt);
+      const successfulCreates = Number(state?.successfulCreates);
+      const isInvalidState =
+        !Number.isFinite(firstCreateAt) || !Number.isFinite(successfulCreates);
+      const isExpiredState =
+        Number.isFinite(retentionMs) && retentionMs >= 0
+          ? firstCreateAt + retentionMs <= referenceTime
+          : false;
+
+      if (!isInvalidState && !isExpiredState) continue;
+
+      this.seedStates.delete(key);
+      removedCount += 1;
+    }
+
+    return removedCount;
+  }
+
   reset() {
     this.toys.length = 0;
     this.rateLimits.clear();
+    this.seedStates.clear();
   }
 }
 

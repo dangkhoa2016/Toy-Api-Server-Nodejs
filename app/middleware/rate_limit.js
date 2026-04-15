@@ -2,7 +2,7 @@ const fp = require('fastify-plugin');
 const {
   http: { sendError },
   requestClient: { getClientKey, getRequestPath },
-  variables: { statusCodes },
+  variables: { getToyPolicyDefaults, statusCodes },
 } = require('../libs');
 
 const DEFAULT_SKIPPED_PATHS = new Set([
@@ -18,13 +18,14 @@ function normalizePath(pathname) {
 }
 
 module.exports = fp(async (server, options) => {
+  const toyPolicyDefaults = getToyPolicyDefaults();
   const {
     enabled = false,
     max = 20,
     methods = ['POST'],
     paths = ['/api/toys'],
     store,
-    windowMs = 300000,
+    windowMs = toyPolicyDefaults.rateLimitWindowMs,
   } = options;
 
   if (!enabled) return;

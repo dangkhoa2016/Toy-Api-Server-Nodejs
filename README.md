@@ -25,14 +25,22 @@ When running outside production, `bin/www` automatically loads variables from `.
 - `LOG_LEVEL`: structured logger level; when set, it enables Fastify logging in any environment.
 - `RATE_LIMIT_ENABLED`: enable or disable in-memory rate limiting.
 - `RATE_LIMIT_MAX`: maximum create requests allowed per window per client IP for `POST /api/toys`.
+- `DEFAULT_RATE_LIMIT_WINDOW_MINUTES`: fallback create rate-limit window in minutes used when `RATE_LIMIT_WINDOW_MS` is not set.
 - `RATE_LIMIT_WINDOW_MS`: create rate-limit window length in milliseconds.
+- `DEFAULT_MAX_TOYS_PER_IP`: fallback active-toy cap used when `MAX_TOYS_PER_IP` is not set.
 - `MAX_TOYS_PER_IP`: maximum active toy records retained per client IP.
+- `DEFAULT_SEED_MAX_TOYS_PER_IP`: fallback seed cap used when `SEED_MAX_TOYS_PER_IP` is not set.
+- `SEED_MAX_TOYS_PER_IP`: temporary active-toy cap allowed while an IP is seeding its first batch.
+- `DEFAULT_SEED_WINDOW_MINUTES`: fallback seed window in minutes used when `SEED_WINDOW_MS` is not set.
+- `SEED_WINDOW_MS`: how long an IP keeps the temporary seeding allowance after its first successful create.
 - `SECURITY_HEADERS_ENABLED`: enable or disable security headers.
 - `BASIC_AUTH_ENABLED`: protect API and docs with HTTP Basic Auth.
 - `BASIC_AUTH_USERNAME`: username used when basic auth is enabled.
 - `BASIC_AUTH_PASSWORD`: password used when basic auth is enabled.
 - `BASIC_AUTH_REALM`: optional realm sent in the `WWW-Authenticate` header.
+- `DEFAULT_TOY_TTL_MINUTES`: fallback toy TTL in minutes used when `TOY_TTL_MS` is not set.
 - `TOY_TTL_MS`: time-to-live for each toy record in milliseconds.
+- `DEFAULT_TOY_CLEANUP_INTERVAL_MINUTES`: fallback cleanup interval in minutes used when `TOY_CLEANUP_INTERVAL_MS` is not set.
 - `TOY_CLEANUP_INTERVAL_MS`: cleanup interval used to remove expired toys and stale rate-limit entries.
 
 When `NODE_ENV=production`, requests with an untrusted `Origin` header are rejected.
@@ -61,6 +69,7 @@ When basic auth is enabled, all routes except `/healthz` and favicon assets requ
 
 - State only lives in memory and is cleared when the process stops.
 - Toy records expire automatically after `TOY_TTL_MS` and are removed by reads plus background cleanup.
+- A client IP can temporarily grow beyond `MAX_TOYS_PER_IP` during its first seed session, up to `SEED_MAX_TOYS_PER_IP` within `SEED_WINDOW_MS`.
 - Updating a toy or its likes does not extend its existing TTL.
 
 ## Security
@@ -68,6 +77,7 @@ When basic auth is enabled, all routes except `/healthz` and favicon assets requ
 - Security headers are provided by Fastify Helmet.
 - Rate limiting is enforced per client IP for `POST /api/toys` and returns `429` with `x-ratelimit-*` headers when exceeded.
 - Active toy records are capped per client IP and new creates return `429` once the quota is exhausted.
+- Seeding only changes the active-toy cap; it does not bypass the request rate limit for `POST /api/toys`.
 - Optional basic auth protects API and Swagger endpoints with `401` + `WWW-Authenticate` when credentials are missing or invalid.
 
 ## API notes
@@ -76,6 +86,7 @@ When basic auth is enabled, all routes except `/healthz` and favicon assets requ
 - `GET /healthz` returns a lightweight service health payload.
 - Create and update requests enforce `likes >= 0`, a bounded name length, and an absolute image URI.
 - Create requests store toys for 15 minutes by default before automatic expiry.
+- The first successful creates from one IP can grow that IP up to 15 active toys by default before the normal cap of 5 resumes.
 - Updates keep the original expiry time instead of resetting the 15-minute TTL.
 - Error responses are standardized as:
 

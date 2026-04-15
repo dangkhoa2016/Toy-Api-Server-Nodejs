@@ -433,6 +433,7 @@ test('toy creation is capped per ip address', async (t) => {
     },
     toyPolicy: {
       maxToysPerIp: 2,
+        seedMaxToysPerIp: 2,
       toyTtlMs: 900000,
     },
   });
@@ -481,6 +482,128 @@ test('toy creation is capped per ip address', async (t) => {
     thirdResponse.json().error.message,
     'Toy quota exceeded for this IP address',
   );
+});
+
+test('seed clients can create up to the seed limit before the normal quota resumes', async (t) => {
+  const server = await createServer({
+    nodeEnv: 'production',
+    rateLimit: {
+      enabled: false,
+    },
+    toyPolicy: {
+      maxToysPerIp: 5,
+      seedMaxToysPerIp: 15,
+      seedWindowMs: 600000,
+      toyTtlMs: 900000,
+    },
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const headers = {
+    'x-forwarded-for': '198.51.100.25',
+  };
+
+  for (let index = 1; index <= 15; index += 1) {
+    const response = await server.inject({
+      method: 'POST',
+      headers,
+      url: '/api/toys',
+      payload: {
+        name: `Seed Toy ${index}`,
+        image: `https://example.com/seed-toy-${index}.png`,
+        likes: 0,
+      },
+    });
+
+    assert.equal(response.statusCode, 201);
+  }
+
+  const blockedResponse = await server.inject({
+    method: 'POST',
+    headers,
+    url: '/api/toys',
+    payload: {
+      name: 'Seed Toy 16',
+      image: 'https://example.com/seed-toy-16.png',
+      likes: 0,
+    },
+  });
+
+  assert.equal(blockedResponse.statusCode, 429);
+  assert.equal(
+    blockedResponse.json().error.message,
+    'Toy quota exceeded for this IP address',
+  );
+  assert.deepEqual(blockedResponse.json().error.details, {
+    defaultLimit: 5,
+    limit: 5,
+    seedLimit: 15,
+    seedMode: false,
+    seedWindowMs: 600000,
+    ttlMs: 900000,
+  });
+});
+
+test('expired seed windows fall back to the normal ip quota', async (t) => {
+  const server = await createServer({
+    nodeEnv: 'production',
+    rateLimit: {
+      enabled: false,
+    },
+    toyPolicy: {
+      maxToysPerIp: 5,
+      seedMaxToysPerIp: 15,
+      seedWindowMs: 1000,
+      toyTtlMs: 900000,
+    },
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const clientKey = '203.0.113.55';
+  for (let index = 1; index <= 5; index += 1) {
+    server.toyStore.saveToy({
+      id: index,
+      name: `Existing Seed Toy ${index}`,
+      image: `https://example.com/existing-seed-toy-${index}.png`,
+      likes: 0,
+      enabled: true,
+      created_at: new Date('2024-01-01T00:00:00.000Z'),
+      updated_at: new Date('2024-01-01T00:00:00.000Z'),
+      expires_at: new Date(Date.now() + 900000),
+      created_by_ip: clientKey,
+    });
+  }
+  server.toyStore.setSeedState(clientKey, {
+    firstCreateAt: Date.now() - 2000,
+    successfulCreates: 4,
+  });
+
+  const response = await server.inject({
+    method: 'POST',
+    headers: {
+      'x-forwarded-for': clientKey,
+    },
+    url: '/api/toys',
+    payload: {
+      name: 'Blocked After Seed Window',
+      image: 'https://example.com/blocked-after-seed-window.png',
+      likes: 0,
+    },
+  });
+
+  assert.equal(response.statusCode, 429);
+  assert.deepEqual(response.json().error.details, {
+    defaultLimit: 5,
+    limit: 5,
+    seedLimit: 15,
+    seedMode: false,
+    seedWindowMs: 1000,
+    ttlMs: 900000,
+  });
 });
 
 test('expired toys are hidden from reads', async (t) => {

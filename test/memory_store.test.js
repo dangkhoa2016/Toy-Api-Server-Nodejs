@@ -67,3 +67,21 @@ test('memory store cleans up expired rate limit entries', () => {
   assert.equal(store.getRateLimit('expired'), undefined);
   assert.deepEqual(store.getRateLimit('active'), { count: 1, resetAt: 10000 });
 });
+
+test('memory store cleans up expired seed states', () => {
+  const store = new MemoryStore({
+    seedStates: new Map([
+      ['expired', { firstCreateAt: 1000, successfulCreates: 10 }],
+      ['active', { firstCreateAt: 9000, successfulCreates: 4 }],
+      ['invalid', { successfulCreates: 2 }],
+    ]),
+  });
+
+  assert.equal(store.cleanupSeedStates(12000, { retentionMs: 5000 }), 2);
+  assert.equal(store.getSeedState('expired'), undefined);
+  assert.equal(store.getSeedState('invalid'), undefined);
+  assert.deepEqual(store.getSeedState('active'), {
+    firstCreateAt: 9000,
+    successfulCreates: 4,
+  });
+});

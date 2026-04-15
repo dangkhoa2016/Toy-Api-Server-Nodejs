@@ -8,6 +8,7 @@ const {
   parseCorsOrigins,
 } = require('./libs/cors');
 const { registerApiSchemas } = require('./libs/api_schemas');
+const { getToyPolicyDefaults, timeConstants } = require('./libs/variables');
 const ToysService = require('./services/toys_service');
 const MemoryStore = require('./stores/memory_store');
 
@@ -42,6 +43,7 @@ function resolveLoggerOptions(logger, nodeEnv) {
 }
 
 function resolveRateLimitOptions(rateLimitOptions = {}, nodeEnv) {
+  const toyPolicyDefaults = getToyPolicyDefaults();
   const envEnabled = process.env.RATE_LIMIT_ENABLED;
   const enabled =
     typeof rateLimitOptions.enabled === 'boolean'
@@ -53,7 +55,9 @@ function resolveRateLimitOptions(rateLimitOptions = {}, nodeEnv) {
   const methods = rateLimitOptions.methods || ['POST'];
   const paths = rateLimitOptions.paths || ['/api/toys'];
   const windowMs = Number(
-    rateLimitOptions.windowMs ?? process.env.RATE_LIMIT_WINDOW_MS ?? 300000,
+    rateLimitOptions.windowMs ??
+      process.env.RATE_LIMIT_WINDOW_MS ??
+      toyPolicyDefaults.rateLimitWindowMs,
   );
 
   return {
@@ -63,33 +67,52 @@ function resolveRateLimitOptions(rateLimitOptions = {}, nodeEnv) {
     paths,
     windowMs: Number.isFinite(windowMs)
       ? Math.max(1000, Math.floor(windowMs))
-      : 300000,
+      : toyPolicyDefaults.rateLimitWindowMs,
   };
 }
 
 function resolveToyPolicyOptions(toyPolicyOptions = {}) {
+  const toyPolicyDefaults = getToyPolicyDefaults();
   const cleanupIntervalMs = Number(
     toyPolicyOptions.cleanupIntervalMs ??
       process.env.TOY_CLEANUP_INTERVAL_MS ??
-      60000,
+      toyPolicyDefaults.cleanupIntervalMs,
   );
   const maxToysPerIp = Number(
-    toyPolicyOptions.maxToysPerIp ?? process.env.MAX_TOYS_PER_IP ?? 5,
+    toyPolicyOptions.maxToysPerIp ??
+      process.env.MAX_TOYS_PER_IP ??
+      toyPolicyDefaults.maxToysPerIp,
+  );
+  const seedMaxToysPerIp = Number(
+    toyPolicyOptions.seedMaxToysPerIp ??
+      process.env.SEED_MAX_TOYS_PER_IP ??
+      toyPolicyDefaults.seedMaxToysPerIp,
+  );
+  const seedWindowMs = Number(
+    toyPolicyOptions.seedWindowMs ??
+      process.env.SEED_WINDOW_MS ??
+      toyPolicyDefaults.seedWindowMs,
   );
   const toyTtlMs = Number(
-    toyPolicyOptions.toyTtlMs ?? process.env.TOY_TTL_MS ?? 15 * 60 * 1000,
+    toyPolicyOptions.toyTtlMs ?? process.env.TOY_TTL_MS ?? toyPolicyDefaults.toyTtlMs,
   );
 
   return {
     cleanupIntervalMs: Number.isFinite(cleanupIntervalMs)
       ? Math.max(1000, Math.floor(cleanupIntervalMs))
-      : 60000,
+      : timeConstants.MS_PER_MINUTE,
     maxToysPerIp: Number.isFinite(maxToysPerIp)
       ? Math.max(1, Math.floor(maxToysPerIp))
-      : 5,
+      : toyPolicyDefaults.maxToysPerIp,
+    seedMaxToysPerIp: Number.isFinite(seedMaxToysPerIp)
+      ? Math.max(1, Math.floor(seedMaxToysPerIp))
+      : toyPolicyDefaults.seedMaxToysPerIp,
+    seedWindowMs: Number.isFinite(seedWindowMs)
+      ? Math.max(1000, Math.floor(seedWindowMs))
+      : toyPolicyDefaults.seedWindowMs,
     toyTtlMs: Number.isFinite(toyTtlMs)
       ? Math.max(1000, Math.floor(toyTtlMs))
-      : 15 * 60 * 1000,
+      : toyPolicyDefaults.toyTtlMs,
   };
 }
 
@@ -155,6 +178,8 @@ function buildServer(options = {}) {
     toysService ||
     new ToysService({
       maxToysPerIp: resolvedToyPolicyOptions.maxToysPerIp,
+      seedMaxToysPerIp: resolvedToyPolicyOptions.seedMaxToysPerIp,
+      seedWindowMs: resolvedToyPolicyOptions.seedWindowMs,
       store: resolvedToyStore,
       toyTtlMs: resolvedToyPolicyOptions.toyTtlMs,
     });
@@ -220,12 +245,22 @@ function buildServer(options = {}) {
       maintenanceTimer = setInterval(() => {
         const expiredToyCount = resolvedToyStore.pruneExpiredToys();
         const clearedRateLimitCount = resolvedToyStore.cleanupRateLimits();
+        const clearedSeedStateCount = resolvedToyStore.cleanupSeedStates(
+          Date.now(),
+          {
+            retentionMs:
+              resolvedToyPolicyOptions.seedWindowMs +
+              resolvedToyPolicyOptions.toyTtlMs,
+          },
+        );
 
-        if (!expiredToyCount && !clearedRateLimitCount) return;
+        if (!expiredToyCount && !clearedRateLimitCount && !clearedSeedStateCount)
+          return;
 
         server.log.info(
           {
             clearedRateLimitCount,
+            clearedSeedStateCount,
             event: 'memory_store.maintenance.completed',
             expiredToyCount,
             toyCount: resolvedToyStore.listToys().length,
