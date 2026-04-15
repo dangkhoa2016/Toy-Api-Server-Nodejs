@@ -1,6 +1,3 @@
-const fs = require('node:fs/promises');
-const os = require('node:os');
-const path = require('node:path');
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 
@@ -23,10 +20,6 @@ async function createServer(options = {}) {
       typeof options.securityHeaders === 'undefined'
         ? { enabled: false }
         : options.securityHeaders,
-    snapshot:
-      typeof options.snapshot === 'undefined'
-        ? { enabled: false }
-        : options.snapshot,
     ...options,
   });
   await server.ready();
@@ -214,6 +207,21 @@ test('responses expose request id and correlation id headers', async (t) => {
   assert.equal(response.headers['x-request-id'], 'req-456');
 });
 
+test('log level env enables Fastify logger outside production', async (t) => {
+  const previousLogLevel = process.env.LOG_LEVEL;
+  process.env.LOG_LEVEL = 'debug';
+
+  const server = await createServer({ nodeEnv: 'development' });
+  t.after(async () => {
+    if (typeof previousLogLevel === 'undefined') delete process.env.LOG_LEVEL;
+    else process.env.LOG_LEVEL = previousLogLevel;
+
+    await server.close();
+  });
+
+  assert.equal(server.log.level, 'debug');
+});
+
 test('security headers are enabled when configured', async (t) => {
   const server = await createServer({
     nodeEnv: 'production',
@@ -302,23 +310,47 @@ test('rate limiting blocks requests after threshold and exposes headers', async 
   });
 
   const firstResponse = await server.inject({
-    method: 'GET',
+    method: 'POST',
+    headers: {
+      'x-forwarded-for': '203.0.113.10',
+    },
     url: '/api/toys',
+    payload: {
+      name: 'Rate Limit One',
+      image: 'https://example.com/rate-limit-one.png',
+      likes: 0,
+    },
   });
   const secondResponse = await server.inject({
-    method: 'GET',
+    method: 'POST',
+    headers: {
+      'x-forwarded-for': '203.0.113.10',
+    },
     url: '/api/toys',
+    payload: {
+      name: 'Rate Limit Two',
+      image: 'https://example.com/rate-limit-two.png',
+      likes: 0,
+    },
   });
   const thirdResponse = await server.inject({
-    method: 'GET',
+    method: 'POST',
+    headers: {
+      'x-forwarded-for': '203.0.113.10',
+    },
     url: '/api/toys',
+    payload: {
+      name: 'Rate Limit Three',
+      image: 'https://example.com/rate-limit-three.png',
+      likes: 0,
+    },
   });
 
-  assert.equal(firstResponse.statusCode, 200);
+  assert.equal(firstResponse.statusCode, 201);
   assert.equal(firstResponse.headers['x-ratelimit-limit'], '2');
   assert.equal(firstResponse.headers['x-ratelimit-remaining'], '1');
 
-  assert.equal(secondResponse.statusCode, 200);
+  assert.equal(secondResponse.statusCode, 201);
   assert.equal(secondResponse.headers['x-ratelimit-remaining'], '0');
 
   assert.equal(thirdResponse.statusCode, 429);
@@ -327,6 +359,166 @@ test('rate limiting blocks requests after threshold and exposes headers', async 
   assert.equal(thirdResponse.headers['x-ratelimit-limit'], '2');
   assert.equal(thirdResponse.headers['x-ratelimit-remaining'], '0');
   assert.equal(typeof thirdResponse.headers['retry-after'], 'string');
+});
+
+test('rate limiting does not apply to read or update routes', async (t) => {
+  const server = await createServer({
+    nodeEnv: 'production',
+    rateLimit: {
+      enabled: true,
+      max: 1,
+      windowMs: 60000,
+    },
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const createResponse = await server.inject({
+    method: 'POST',
+    headers: {
+      'x-forwarded-for': '203.0.113.20',
+    },
+    url: '/api/toys',
+    payload: {
+      name: 'Created Once',
+      image: 'https://example.com/created-once.png',
+      likes: 0,
+    },
+  });
+  assert.equal(createResponse.statusCode, 201);
+
+  const listResponse = await server.inject({
+    method: 'GET',
+    headers: {
+      'x-forwarded-for': '203.0.113.20',
+    },
+    url: '/api/toys',
+  });
+  const updateResponse = await server.inject({
+    method: 'PUT',
+    headers: {
+      'x-forwarded-for': '203.0.113.20',
+    },
+    url: '/api/toys/1',
+    payload: {
+      name: 'Updated Without Rate Limit',
+      image: 'https://example.com/updated-without-rate-limit.png',
+      likes: 1,
+    },
+  });
+  const secondCreateResponse = await server.inject({
+    method: 'POST',
+    headers: {
+      'x-forwarded-for': '203.0.113.20',
+    },
+    url: '/api/toys',
+    payload: {
+      name: 'Blocked Create',
+      image: 'https://example.com/blocked-create.png',
+      likes: 0,
+    },
+  });
+
+  assert.equal(listResponse.statusCode, 200);
+  assert.equal(updateResponse.statusCode, 200);
+  assert.equal(secondCreateResponse.statusCode, 429);
+});
+
+test('toy creation is capped per ip address', async (t) => {
+  const server = await createServer({
+    nodeEnv: 'production',
+    rateLimit: {
+      enabled: false,
+    },
+    toyPolicy: {
+      maxToysPerIp: 2,
+      toyTtlMs: 900000,
+    },
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const headers = {
+    'x-forwarded-for': '198.51.100.10',
+  };
+  const firstResponse = await server.inject({
+    method: 'POST',
+    headers,
+    url: '/api/toys',
+    payload: {
+      name: 'Quota One',
+      image: 'https://example.com/quota-one.png',
+      likes: 0,
+    },
+  });
+  const secondResponse = await server.inject({
+    method: 'POST',
+    headers,
+    url: '/api/toys',
+    payload: {
+      name: 'Quota Two',
+      image: 'https://example.com/quota-two.png',
+      likes: 0,
+    },
+  });
+  const thirdResponse = await server.inject({
+    method: 'POST',
+    headers,
+    url: '/api/toys',
+    payload: {
+      name: 'Quota Three',
+      image: 'https://example.com/quota-three.png',
+      likes: 0,
+    },
+  });
+
+  assert.equal(firstResponse.statusCode, 201);
+  assert.equal(secondResponse.statusCode, 201);
+  assert.equal(thirdResponse.statusCode, 429);
+  assert.equal(
+    thirdResponse.json().error.message,
+    'Toy quota exceeded for this IP address',
+  );
+});
+
+test('expired toys are hidden from reads', async (t) => {
+  const server = await createServer({
+    nodeEnv: 'production',
+    toyPolicy: {
+      maxToysPerIp: 5,
+      toyTtlMs: 900000,
+    },
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  server.toyStore.saveToy({
+    id: 1,
+    name: 'Expired Toy',
+    image: 'https://example.com/expired-toy.png',
+    likes: 0,
+    enabled: true,
+    created_at: new Date('2024-01-01T00:00:00.000Z'),
+    updated_at: new Date('2024-01-01T00:00:00.000Z'),
+    expires_at: new Date('2024-01-01T00:10:00.000Z'),
+    created_by_ip: '203.0.113.30',
+  });
+
+  const listResponse = await server.inject({
+    method: 'GET',
+    url: '/api/toys',
+  });
+  const getResponse = await server.inject({
+    method: 'GET',
+    url: '/api/toys/1',
+  });
+
+  assert.equal(listResponse.statusCode, 200);
+  assert.deepEqual(listResponse.json(), []);
+  assert.equal(getResponse.statusCode, 404);
 });
 
 test('cors allows trusted origins in production and blocks others', async (t) => {
@@ -387,56 +579,6 @@ test('cors allows trusted origins in production and blocks others', async (t) =>
     authenticatedResponse.headers['access-control-allow-origin'],
     'https://allowed.example',
   );
-});
-
-test('server restores toys from snapshot on restart', async (t) => {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'toy-server-'));
-  const snapshotFilePath = path.join(tempDir, 'memory-store.snapshot.json');
-
-  const serverA = await createServer({
-    nodeEnv: 'production',
-    snapshot: {
-      enabled: true,
-      filePath: snapshotFilePath,
-      intervalMs: 0,
-    },
-  });
-  t.after(async () => {
-    await fs.rm(tempDir, { recursive: true, force: true });
-  });
-
-  const createResponse = await serverA.inject({
-    method: 'POST',
-    url: '/api/toys',
-    payload: {
-      name: 'Snapshot Toy',
-      image: 'https://example.com/snapshot-toy.png',
-      likes: 4,
-    },
-  });
-  assert.equal(createResponse.statusCode, 201);
-  await serverA.close();
-
-  const serverB = await createServer({
-    nodeEnv: 'production',
-    snapshot: {
-      enabled: true,
-      filePath: snapshotFilePath,
-      intervalMs: 0,
-    },
-  });
-  t.after(async () => {
-    await serverB.close();
-  });
-
-  const listResponse = await serverB.inject({
-    method: 'GET',
-    url: '/api/toys',
-  });
-
-  assert.equal(listResponse.statusCode, 200);
-  assert.equal(listResponse.json().length, 1);
-  assert.equal(listResponse.json()[0].name, 'Snapshot Toy');
 });
 
 test('openapi json and swagger ui are exposed', async (t) => {

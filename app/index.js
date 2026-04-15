@@ -1,6 +1,5 @@
 const debug = require('debug')('toy-api-server-nodejs:->index');
 const { randomUUID } = require('node:crypto');
-const path = require('node:path');
 const Fastify = require('fastify');
 const {
   corsAllowedHeaders,
@@ -13,6 +12,9 @@ const ToysService = require('./services/toys_service');
 const MemoryStore = require('./stores/memory_store');
 
 function resolveLoggerOptions(logger, nodeEnv) {
+  debug('Resolving logger options', { logger, nodeEnv });
+  const envLogLevel = process.env.LOG_LEVEL;
+
   if (logger === false) return false;
 
   if (logger && typeof logger === 'object') return logger;
@@ -24,35 +26,19 @@ function resolveLoggerOptions(logger, nodeEnv) {
     };
   }
 
+  if (envLogLevel) {
+    return {
+      level: envLogLevel,
+    };
+  }
+
   if (nodeEnv === 'production') {
     return {
-      level: process.env.LOG_LEVEL || 'info',
+      level: 'info',
     };
   }
 
   return false;
-}
-
-function resolveSnapshotOptions(snapshotOptions = {}, nodeEnv) {
-  const envEnabled = process.env.SNAPSHOT_ENABLED;
-  const enabled =
-    typeof snapshotOptions.enabled === 'boolean'
-      ? snapshotOptions.enabled
-      : envEnabled
-        ? envEnabled !== 'false'
-        : nodeEnv !== 'test';
-  const intervalMs = Number(
-    snapshotOptions.intervalMs ?? process.env.SNAPSHOT_INTERVAL_MS ?? 30000,
-  );
-
-  return {
-    enabled,
-    filePath:
-      snapshotOptions.filePath ||
-      process.env.SNAPSHOT_FILE_PATH ||
-      path.join(process.cwd(), 'data', 'memory-store.snapshot.json'),
-    intervalMs: Number.isFinite(intervalMs) ? Math.max(0, intervalMs) : 30000,
-  };
 }
 
 function resolveRateLimitOptions(rateLimitOptions = {}, nodeEnv) {
@@ -63,17 +49,47 @@ function resolveRateLimitOptions(rateLimitOptions = {}, nodeEnv) {
       : envEnabled
         ? envEnabled !== 'false'
         : nodeEnv !== 'test';
-  const max = Number(rateLimitOptions.max ?? process.env.RATE_LIMIT_MAX ?? 100);
+  const max = Number(rateLimitOptions.max ?? process.env.RATE_LIMIT_MAX ?? 20);
+  const methods = rateLimitOptions.methods || ['POST'];
+  const paths = rateLimitOptions.paths || ['/api/toys'];
   const windowMs = Number(
-    rateLimitOptions.windowMs ?? process.env.RATE_LIMIT_WINDOW_MS ?? 60000,
+    rateLimitOptions.windowMs ?? process.env.RATE_LIMIT_WINDOW_MS ?? 300000,
   );
 
   return {
     enabled,
     max: Number.isFinite(max) ? Math.max(1, Math.floor(max)) : 100,
+    methods,
+    paths,
     windowMs: Number.isFinite(windowMs)
       ? Math.max(1000, Math.floor(windowMs))
+      : 300000,
+  };
+}
+
+function resolveToyPolicyOptions(toyPolicyOptions = {}) {
+  const cleanupIntervalMs = Number(
+    toyPolicyOptions.cleanupIntervalMs ??
+      process.env.TOY_CLEANUP_INTERVAL_MS ??
+      60000,
+  );
+  const maxToysPerIp = Number(
+    toyPolicyOptions.maxToysPerIp ?? process.env.MAX_TOYS_PER_IP ?? 5,
+  );
+  const toyTtlMs = Number(
+    toyPolicyOptions.toyTtlMs ?? process.env.TOY_TTL_MS ?? 15 * 60 * 1000,
+  );
+
+  return {
+    cleanupIntervalMs: Number.isFinite(cleanupIntervalMs)
+      ? Math.max(1000, Math.floor(cleanupIntervalMs))
       : 60000,
+    maxToysPerIp: Number.isFinite(maxToysPerIp)
+      ? Math.max(1, Math.floor(maxToysPerIp))
+      : 5,
+    toyTtlMs: Number.isFinite(toyTtlMs)
+      ? Math.max(1000, Math.floor(toyTtlMs))
+      : 15 * 60 * 1000,
   };
 }
 
@@ -123,21 +139,26 @@ function buildServer(options = {}) {
     nodeEnv = process.env.NODE_ENV,
     rateLimit,
     securityHeaders,
-    snapshot,
+    toyPolicy,
     toyStore,
     toysService,
   } = options;
-  const resolvedSnapshotOptions = resolveSnapshotOptions(snapshot, nodeEnv);
   const resolvedRateLimitOptions = resolveRateLimitOptions(rateLimit, nodeEnv);
+  const resolvedToyPolicyOptions = resolveToyPolicyOptions(toyPolicy);
   const resolvedSecurityHeadersOptions = resolveSecurityHeadersOptions(
     securityHeaders,
     nodeEnv,
   );
   const resolvedBasicAuthOptions = resolveBasicAuthOptions(basicAuth);
-  const resolvedToyStore =
-    toyStore || new MemoryStore({ snapshot: resolvedSnapshotOptions });
+  const resolvedToyStore = toyStore || new MemoryStore();
   const resolvedToysService =
-    toysService || new ToysService({ store: resolvedToyStore });
+    toysService ||
+    new ToysService({
+      maxToysPerIp: resolvedToyPolicyOptions.maxToysPerIp,
+      store: resolvedToyStore,
+      toyTtlMs: resolvedToyPolicyOptions.toyTtlMs,
+    });
+  let maintenanceTimer = null;
 
   const server = Fastify({
     disableRequestLogging: true,
@@ -166,7 +187,7 @@ function buildServer(options = {}) {
         title: 'Toy API Server',
         version: '1.0.0',
         description:
-          'Fastify-based toy API with in-memory storage, snapshot persistence, rate limiting, and optional basic auth.',
+          'Fastify-based toy API with in-memory storage, TTL cleanup, rate limiting, and optional basic auth.',
       },
       security: resolvedBasicAuthOptions.enabled ? [{ basicAuth: [] }] : [],
       tags: [
@@ -195,60 +216,34 @@ function buildServer(options = {}) {
   );
 
   server.addHook('onReady', async () => {
-    if (!resolvedToyStore.hasSnapshot()) return;
+    if (!maintenanceTimer) {
+      maintenanceTimer = setInterval(() => {
+        const expiredToyCount = resolvedToyStore.pruneExpiredToys();
+        const clearedRateLimitCount = resolvedToyStore.cleanupRateLimits();
 
-    try {
-      const restored = await resolvedToyStore.restoreFromSnapshot();
-      if (restored) {
+        if (!expiredToyCount && !clearedRateLimitCount) return;
+
         server.log.info(
           {
-            event: 'memory_store.snapshot.restored',
-            snapshotFilePath: resolvedToyStore.getSnapshotFilePath(),
+            clearedRateLimitCount,
+            event: 'memory_store.maintenance.completed',
+            expiredToyCount,
             toyCount: resolvedToyStore.listToys().length,
           },
-          'memory store restored from snapshot',
+          'memory store maintenance completed',
         );
-      }
-
-      resolvedToyStore.startAutoSave({
-        onError: (error) => {
-          server.log.error(
-            {
-              error,
-              event: 'memory_store.snapshot.save_failed',
-              snapshotFilePath: resolvedToyStore.getSnapshotFilePath(),
-            },
-            'memory store snapshot save failed',
-          );
-        },
-      });
-    } catch (error) {
-      server.log.error(
-        {
-          error,
-          event: 'memory_store.snapshot.restore_failed',
-          snapshotFilePath: resolvedToyStore.getSnapshotFilePath(),
-        },
-        'memory store snapshot restore failed',
-      );
-      throw error;
+      }, resolvedToyPolicyOptions.cleanupIntervalMs);
+      maintenanceTimer.unref?.();
     }
+
   });
 
   server.addHook('onClose', async () => {
-    resolvedToyStore.stopAutoSave();
+    if (maintenanceTimer) {
+      clearInterval(maintenanceTimer);
+      maintenanceTimer = null;
+    }
 
-    if (!resolvedToyStore.hasSnapshot()) return;
-
-    await resolvedToyStore.saveSnapshot();
-    server.log.info(
-      {
-        event: 'memory_store.snapshot.saved',
-        snapshotFilePath: resolvedToyStore.getSnapshotFilePath(),
-        toyCount: resolvedToyStore.listToys().length,
-      },
-      'memory store snapshot saved',
-    );
   });
 
   server.register(require('./middleware/logger'));

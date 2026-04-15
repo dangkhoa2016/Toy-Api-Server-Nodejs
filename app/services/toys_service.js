@@ -1,4 +1,12 @@
 const { statusCodes, toyConstraints } = require('../libs/variables');
+const debug = require('debug')('toy-api-server-nodejs:->services->toys-service');
+
+function normalizePositiveInteger(value, fallback) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+
+  return Math.max(1, Math.floor(numericValue));
+}
 
 function normalizeId(id) {
   if (id === null || typeof id === 'undefined' || id === '') return null;
@@ -52,18 +60,41 @@ function validateImage(image) {
 
 class ToysService {
   constructor(options = {}) {
-    const { store } = options;
+    const { maxToysPerIp, store, toyTtlMs } = options;
 
     if (!store) throw new Error('ToysService requires a store');
 
+    this.maxToysPerIp = normalizePositiveInteger(
+      maxToysPerIp ?? process.env.MAX_TOYS_PER_IP ?? 5,
+      5,
+    );
     this.store = store;
+    this.toyTtlMs = normalizePositiveInteger(
+      toyTtlMs ?? process.env.TOY_TTL_MS ?? 15 * 60 * 1000,
+      15 * 60 * 1000,
+    );
+  }
+
+  pruneExpiredToys(referenceTime = new Date()) {
+    return this.store.pruneExpiredToys(referenceTime);
+  }
+
+  sanitizeToy(toy) {
+    if (!toy) return toy;
+
+    const { created_by_ip: _createdByIp, expires_at: _expiresAt, ...publicToy } = toy;
+    debug('Sanitizing toy:', { id: toy.id, name: toy.name, created_by_ip: _createdByIp, expires_at: _expiresAt });
+    return publicToy;
   }
 
   async getToys(enabledOnly = false) {
-    return this.store.listToys({ enabledOnly });
+    this.pruneExpiredToys();
+    return this.store.listToys({ enabledOnly }).map((toy) => this.sanitizeToy(toy));
   }
 
   async saveToy(data) {
+    this.pruneExpiredToys();
+
     if (!data)
       return {
         code: statusCodes.UNPROCESSABLE_ENTITY,
@@ -124,7 +155,12 @@ class ToysService {
     const toy = {
       ...existingToy,
       ...payload,
+      created_by_ip: existingToy?.created_by_ip ?? payload.created_by_ip,
       created_at: createdAt,
+      expires_at:
+        existingToy?.expires_at ||
+        payload.expires_at ||
+        new Date(timestamp.getTime() + this.toyTtlMs),
       updated_at: timestamp,
       likes,
       enabled,
@@ -136,18 +172,34 @@ class ToysService {
 
     return {
       code: existingToy ? statusCodes.OK : statusCodes.DATA_CREATED,
-      data: toy,
+      data: this.sanitizeToy(toy),
     };
   }
 
-  async createToy(data) {
+  async createToy(data, options = {}) {
+    this.pruneExpiredToys();
+
     if (!data)
       return {
         code: statusCodes.UNPROCESSABLE_ENTITY,
         error: 'Toy payload is required',
       };
 
+    const clientKey = options.clientKey || 'unknown';
+    const activeToyCount = this.store.countToysByClientKey(clientKey);
+    if (activeToyCount >= this.maxToysPerIp)
+      return {
+        code: statusCodes.TOO_MANY_REQUESTS,
+        error: 'Toy quota exceeded for this IP address',
+        details: {
+          limit: this.maxToysPerIp,
+          ttlMs: this.toyTtlMs,
+        },
+      };
+
     const payload = { ...data };
+    payload.created_by_ip = clientKey;
+    payload.expires_at = new Date(Date.now() + this.toyTtlMs);
     delete payload.id;
     delete payload.created_at;
     delete payload.updated_at;
@@ -156,6 +208,8 @@ class ToysService {
   }
 
   async deleteToy(id) {
+    this.pruneExpiredToys();
+
     const normalizedId = normalizeId(id);
     if (normalizedId === null)
       return {
@@ -174,6 +228,8 @@ class ToysService {
   }
 
   async getToy(id) {
+    this.pruneExpiredToys();
+
     const normalizedId = normalizeId(id);
     if (normalizedId === null)
       return {
@@ -188,10 +244,12 @@ class ToysService {
         error: `Toy with id: [${normalizedId}] not found`,
       };
 
-    return { code: statusCodes.OK, data: toy };
+    return { code: statusCodes.OK, data: this.sanitizeToy(toy) };
   }
 
   async likeToy(id, likes) {
+    this.pruneExpiredToys();
+
     const normalizedId = normalizeId(id);
     if (normalizedId === null)
       return {
@@ -220,7 +278,7 @@ class ToysService {
     };
 
     this.store.saveToy(updatedToy);
-    return { code: statusCodes.OK, data: updatedToy };
+    return { code: statusCodes.OK, data: this.sanitizeToy(updatedToy) };
   }
 
   reset() {

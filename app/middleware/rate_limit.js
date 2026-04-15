@@ -1,6 +1,7 @@
 const fp = require('fastify-plugin');
 const {
   http: { sendError },
+  requestClient: { getClientKey, getRequestPath },
   variables: { statusCodes },
 } = require('../libs');
 
@@ -10,30 +11,37 @@ const DEFAULT_SKIPPED_PATHS = new Set([
   '/favicon.png',
 ]);
 
-function getClientKey(request) {
-  const forwardedFor = request.headers['x-forwarded-for'];
-  if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
-    return forwardedFor.split(',')[0].trim();
-  }
+function normalizePath(pathname) {
+  if (!pathname || pathname === '/') return '/';
 
-  return request.ip || request.socket?.remoteAddress || 'unknown';
-}
-
-function getRequestPath(request) {
-  return request.raw.url?.split('?')[0] || request.url || '/';
+  return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
 }
 
 module.exports = fp(async (server, options) => {
-  const { enabled = false, max = 100, store, windowMs = 60000 } = options;
+  const {
+    enabled = false,
+    max = 20,
+    methods = ['POST'],
+    paths = ['/api/toys'],
+    store,
+    windowMs = 300000,
+  } = options;
 
   if (!enabled) return;
   if (!store) throw new Error('Rate limit middleware requires a store');
+
+  const allowedMethods = new Set(
+    methods.map((method) => method.toUpperCase()),
+  );
+  const allowedPaths = new Set(paths.map((pathname) => normalizePath(pathname)));
 
   server.addHook('onRequest', async (request, reply) => {
     if (request.method === 'OPTIONS') return;
 
     const requestPath = getRequestPath(request);
     if (DEFAULT_SKIPPED_PATHS.has(requestPath)) return;
+    if (!allowedMethods.has(request.method.toUpperCase())) return;
+    if (!allowedPaths.has(normalizePath(requestPath))) return;
 
     const clientKey = getClientKey(request);
     const now = Date.now();

@@ -1,6 +1,3 @@
-const fs = require('node:fs/promises');
-const os = require('node:os');
-const path = require('node:path');
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 
@@ -30,48 +27,43 @@ test('memory store allocates ids, stores toys, and clears state', () => {
   assert.equal(store.getRateLimit('127.0.0.1'), undefined);
 });
 
-test('memory store saves and restores snapshots', async () => {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'toy-store-'));
-  const snapshotFilePath = path.join(tempDir, 'memory-store.snapshot.json');
+test('memory store prunes expired toys and counts active toys per ip', () => {
+  const store = new MemoryStore();
+  const referenceTime = new Date('2024-01-01T00:15:00.000Z');
 
-  const sourceStore = new MemoryStore({
-    snapshot: {
-      enabled: true,
-      filePath: snapshotFilePath,
-      intervalMs: 0,
-    },
-  });
-  sourceStore.saveToy({
+  store.saveToy({
     id: 1,
-    name: 'Robot',
-    image: 'https://example.com/robot.png',
-    likes: 2,
+    name: 'Expired Toy',
     enabled: true,
-    created_at: new Date('2024-01-01T00:00:00.000Z'),
-    updated_at: new Date('2024-01-02T00:00:00.000Z'),
+    created_by_ip: '203.0.113.10',
+    expires_at: new Date('2024-01-01T00:10:00.000Z'),
   });
-  sourceStore.setRateLimit('127.0.0.1', {
-    count: 2,
-    resetAt: '2024-01-03T00:00:00.000Z',
+  store.saveToy({
+    id: 2,
+    name: 'Active Toy',
+    enabled: true,
+    created_by_ip: '203.0.113.10',
+    expires_at: new Date('2024-01-01T00:20:00.000Z'),
   });
 
-  await sourceStore.saveSnapshot();
+  assert.equal(
+    store.countToysByClientKey('203.0.113.10', { referenceTime }),
+    1,
+  );
+  assert.equal(store.pruneExpiredToys(referenceTime), 1);
+  assert.equal(store.listToys({ referenceTime }).length, 1);
+  assert.equal(store.findToyById(1), null);
+});
 
-  const restoredStore = new MemoryStore({
-    snapshot: {
-      enabled: true,
-      filePath: snapshotFilePath,
-      intervalMs: 0,
-    },
+test('memory store cleans up expired rate limit entries', () => {
+  const store = new MemoryStore({
+    rateLimits: new Map([
+      ['expired', { count: 20, resetAt: 1000 }],
+      ['active', { count: 1, resetAt: 10000 }],
+    ]),
   });
-  const restored = await restoredStore.restoreFromSnapshot();
 
-  assert.equal(restored, true);
-  assert.equal(restoredStore.listToys().length, 1);
-  assert.equal(restoredStore.findToyById(1).name, 'Robot');
-  assert.equal(restoredStore.findToyById(1).created_at instanceof Date, true);
-  assert.deepEqual(restoredStore.getRateLimit('127.0.0.1'), {
-    count: 2,
-    resetAt: '2024-01-03T00:00:00.000Z',
-  });
+  assert.equal(store.cleanupRateLimits(5000), 1);
+  assert.equal(store.getRateLimit('expired'), undefined);
+  assert.deepEqual(store.getRateLimit('active'), { count: 1, resetAt: 10000 });
 });

@@ -1,32 +1,43 @@
-const fs = require('node:fs/promises');
-const path = require('node:path');
-
 class MemoryStore {
   constructor(options = {}) {
-    const { toys = [], rateLimits = new Map(), snapshot = {} } = options;
+    const { toys = [], rateLimits = new Map() } = options;
 
     this.toys = [...toys];
     this.rateLimits = rateLimits;
-    this.snapshot = {
-      enabled: Boolean(snapshot.enabled),
-      filePath: snapshot.filePath || null,
-      intervalMs: Number.isFinite(snapshot.intervalMs)
-        ? Math.max(0, snapshot.intervalMs)
-        : 30000,
-      timer: null,
-    };
+  }
+
+  isToyExpired(toy, referenceTime = new Date()) {
+    if (!toy?.expires_at) return false;
+
+    const expiresAt =
+      toy.expires_at instanceof Date
+        ? toy.expires_at
+        : new Date(toy.expires_at);
+    if (!Number.isFinite(expiresAt.valueOf())) return false;
+
+    return expiresAt.getTime() <= referenceTime.getTime();
   }
 
   listToys(options = {}) {
-    const { enabledOnly = false } = options;
+    const { clientKey, enabledOnly = false, referenceTime = new Date() } = options;
 
-    if (enabledOnly) return this.toys.filter((toy) => toy.enabled);
+    const activeToys = this.toys.filter(
+      (toy) => !this.isToyExpired(toy, referenceTime),
+    );
 
-    return this.toys;
+    const filteredByClient = clientKey
+      ? activeToys.filter((toy) => toy.created_by_ip === clientKey)
+      : activeToys;
+
+    if (enabledOnly) {
+      return filteredByClient.filter((toy) => toy.enabled);
+    }
+
+    return filteredByClient;
   }
 
   findToyById(id) {
-    return this.toys.find((toy) => toy.id === id) || null;
+    return this.toys.find((toy) => toy.id === id && !this.isToyExpired(toy)) || null;
   }
 
   findToyIndexById(id) {
@@ -56,6 +67,15 @@ class MemoryStore {
     return true;
   }
 
+  countToysByClientKey(clientKey, options = {}) {
+    if (!clientKey) return 0;
+
+    return this.listToys({
+      clientKey,
+      referenceTime: options.referenceTime,
+    }).length;
+  }
+
   getRateLimit(key) {
     return this.rateLimits.get(key);
   }
@@ -65,103 +85,26 @@ class MemoryStore {
     return value;
   }
 
-  hasSnapshot() {
-    return this.snapshot.enabled && Boolean(this.snapshot.filePath);
-  }
-
-  getSnapshotFilePath() {
-    return this.snapshot.filePath;
-  }
-
-  exportState() {
-    return {
-      rateLimits: Array.from(this.rateLimits.entries()),
-      savedAt: new Date().toISOString(),
-      toys: this.toys.map((toy) => ({
-        ...toy,
-        created_at:
-          toy.created_at instanceof Date
-            ? toy.created_at.toISOString()
-            : toy.created_at,
-        updated_at:
-          toy.updated_at instanceof Date
-            ? toy.updated_at.toISOString()
-            : toy.updated_at,
-      })),
-      version: 1,
-    };
-  }
-
-  importState(state = {}) {
-    const toys = Array.isArray(state.toys)
-      ? state.toys.map((toy) => ({
-          ...toy,
-          created_at: toy.created_at ? new Date(toy.created_at) : undefined,
-          updated_at: toy.updated_at ? new Date(toy.updated_at) : undefined,
-        }))
-      : [];
-    const rateLimits = Array.isArray(state.rateLimits)
-      ? new Map(state.rateLimits)
-      : new Map();
-
-    this.toys = toys;
-    this.rateLimits = rateLimits;
-  }
-
-  async restoreFromSnapshot() {
-    if (!this.hasSnapshot()) return false;
-
-    try {
-      const rawState = await fs.readFile(this.snapshot.filePath, 'utf8');
-      this.importState(JSON.parse(rawState));
-      return true;
-    } catch (error) {
-      if (error.code === 'ENOENT') return false;
-
-      throw error;
-    }
-  }
-
-  async saveSnapshot() {
-    if (!this.hasSnapshot()) return false;
-
-    const filePath = this.snapshot.filePath;
-    const dirPath = path.dirname(filePath);
-    const tmpFilePath = `${filePath}.tmp`;
-
-    await fs.mkdir(dirPath, { recursive: true });
-    await fs.writeFile(
-      tmpFilePath,
-      JSON.stringify(this.exportState(), null, 2),
+  pruneExpiredToys(referenceTime = new Date()) {
+    const initialCount = this.toys.length;
+    this.toys = this.toys.filter(
+      (toy) => !this.isToyExpired(toy, referenceTime),
     );
-    await fs.rename(tmpFilePath, filePath);
 
-    return true;
+    return initialCount - this.toys.length;
   }
 
-  startAutoSave(options = {}) {
-    const { onError } = options;
+  cleanupRateLimits(referenceTime = Date.now()) {
+    let removedCount = 0;
 
-    if (!this.hasSnapshot()) return false;
-    if (this.snapshot.intervalMs <= 0) return false;
-    if (this.snapshot.timer) return false;
+    for (const [key, entry] of this.rateLimits.entries()) {
+      if (!entry || !Number.isFinite(entry.resetAt) || entry.resetAt <= referenceTime) {
+        this.rateLimits.delete(key);
+        removedCount += 1;
+      }
+    }
 
-    this.snapshot.timer = setInterval(() => {
-      this.saveSnapshot().catch((error) => {
-        if (typeof onError === 'function') onError(error);
-      });
-    }, this.snapshot.intervalMs);
-
-    this.snapshot.timer.unref?.();
-    return true;
-  }
-
-  stopAutoSave() {
-    if (!this.snapshot.timer) return false;
-
-    clearInterval(this.snapshot.timer);
-    this.snapshot.timer = null;
-    return true;
+    return removedCount;
   }
 
   reset() {

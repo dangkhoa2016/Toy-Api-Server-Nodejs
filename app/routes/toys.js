@@ -1,6 +1,7 @@
 const debug = require('debug')('toy-api-server-nodejs:->routes->toys');
 const {
   http: { sendError },
+  requestClient: { getClientKey },
   variables: { statusCodes, toyConstraints },
 } = require('../libs');
 const updateActions = ['post', 'put', 'patch'];
@@ -76,6 +77,21 @@ async function routes(fastify, options) {
     if (data) return reply.code(code).send(data);
 
     return sendError(reply, code, error || 'Unable to save toy');
+  }
+
+  async function createToy(request, reply) {
+    const clientKey = getClientKey(request);
+    const { name = '', likes = 0, image = '' } = request.body;
+
+    const {
+      code = statusCodes.UNPROCESSABLE_ENTITY,
+      data,
+      details,
+      error,
+    } = await toysService.createToy({ name, likes, image }, { clientKey });
+    if (data) return reply.code(code).send(data);
+
+    return sendError(reply, code, error || 'Unable to create toy', details);
   }
 
   async function deleteToy(request, reply) {
@@ -175,7 +191,7 @@ async function routes(fastify, options) {
         tags: ['toys'],
       },
     },
-    saveToy,
+    createToy,
   );
 
   //update

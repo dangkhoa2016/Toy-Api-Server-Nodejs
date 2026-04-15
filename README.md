@@ -4,7 +4,7 @@
 
 Sample REST API built with Fastify.
 
-The project intentionally keeps all toy data in memory, with optional snapshot persistence to restore state after restart.
+The project intentionally keeps all toy data in memory and expires records automatically after a short TTL.
 
 ## Setup
 
@@ -22,23 +22,22 @@ When running outside production, `bin/www` automatically loads variables from `.
 - `PORT`: port to listen on.
 - `HOST`: host interface to bind.
 - `CORS_ORIGINS`: comma-separated list of trusted origins.
-- `LOG_LEVEL`: structured logger level used when running in production.
+- `LOG_LEVEL`: structured logger level; when set, it enables Fastify logging in any environment.
 - `RATE_LIMIT_ENABLED`: enable or disable in-memory rate limiting.
-- `RATE_LIMIT_MAX`: maximum requests allowed per window per client.
-- `RATE_LIMIT_WINDOW_MS`: rate-limit window length in milliseconds.
+- `RATE_LIMIT_MAX`: maximum create requests allowed per window per client IP for `POST /api/toys`.
+- `RATE_LIMIT_WINDOW_MS`: create rate-limit window length in milliseconds.
+- `MAX_TOYS_PER_IP`: maximum active toy records retained per client IP.
 - `SECURITY_HEADERS_ENABLED`: enable or disable security headers.
 - `BASIC_AUTH_ENABLED`: protect API and docs with HTTP Basic Auth.
 - `BASIC_AUTH_USERNAME`: username used when basic auth is enabled.
 - `BASIC_AUTH_PASSWORD`: password used when basic auth is enabled.
 - `BASIC_AUTH_REALM`: optional realm sent in the `WWW-Authenticate` header.
-- `SNAPSHOT_ENABLED`: enable or disable snapshot persistence.
-- `SNAPSHOT_FILE_PATH`: snapshot file path used for restore/save.
-- `SNAPSHOT_INTERVAL_MS`: auto-save interval in milliseconds.
+- `TOY_TTL_MS`: time-to-live for each toy record in milliseconds.
+- `TOY_CLEANUP_INTERVAL_MS`: cleanup interval used to remove expired toys and stale rate-limit entries.
 
 When `NODE_ENV=production`, requests with an untrusted `Origin` header are rejected.
-Production also enables Fastify's structured JSON logger and returns `x-request-id` and `x-correlation-id` headers for request tracing.
-Snapshot persistence restores the in-memory store on boot and flushes state again during shutdown.
-Rate limiting is in-memory and can be snapshotted with the rest of store state.
+Fastify's structured JSON logger is enabled whenever `LOG_LEVEL` is set, and production defaults it to `info`; responses still return `x-request-id` and `x-correlation-id` headers for request tracing.
+Rate limiting is in-memory and only applies to `POST /api/toys` by default.
 When basic auth is enabled, all routes except `/healthz` and favicon assets require credentials.
 
 ## Scripts
@@ -58,16 +57,17 @@ When basic auth is enabled, all routes except `/healthz` and favicon assets requ
 - When basic auth is enabled, both `/docs/` and `/openapi.json` require credentials.
 - When basic auth is enabled, Swagger UI shows an `Authorize` button for the shared `basicAuth` scheme.
 
-## Persistence
+## Data Lifecycle
 
-- By default, snapshots are enabled outside the test environment.
-- State is written to `./data/memory-store.snapshot.json` unless overridden.
-- The snapshot file contains toy records and in-memory rate-limit state.
+- State only lives in memory and is cleared when the process stops.
+- Toy records expire automatically after `TOY_TTL_MS` and are removed by reads plus background cleanup.
+- Updating a toy or its likes does not extend its existing TTL.
 
 ## Security
 
 - Security headers are provided by Fastify Helmet.
-- Rate limiting is enforced per client IP and returns `429` with `x-ratelimit-*` headers when exceeded.
+- Rate limiting is enforced per client IP for `POST /api/toys` and returns `429` with `x-ratelimit-*` headers when exceeded.
+- Active toy records are capped per client IP and new creates return `429` once the quota is exhausted.
 - Optional basic auth protects API and Swagger endpoints with `401` + `WWW-Authenticate` when credentials are missing or invalid.
 
 ## API notes
@@ -75,6 +75,8 @@ When basic auth is enabled, all routes except `/healthz` and favicon assets requ
 - `DELETE /api/toys/:id` is the only supported delete endpoint.
 - `GET /healthz` returns a lightweight service health payload.
 - Create and update requests enforce `likes >= 0`, a bounded name length, and an absolute image URI.
+- Create requests store toys for 15 minutes by default before automatic expiry.
+- Updates keep the original expiry time instead of resetting the 15-minute TTL.
 - Error responses are standardized as:
 
 ```json
