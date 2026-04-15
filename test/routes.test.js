@@ -718,6 +718,10 @@ test('openapi json and swagger ui are exposed', async (t) => {
     method: 'GET',
     url: '/docs/',
   });
+  const docsFaviconResponse = await server.inject({
+    method: 'GET',
+    url: '/docs/static/theme/toy-favicon-32x32.png',
+  });
 
   assert.equal(openApiResponse.statusCode, 200);
   assert.equal(openApiResponse.json().openapi, '3.0.3');
@@ -728,6 +732,9 @@ test('openapi json and swagger ui are exposed', async (t) => {
 
   assert.equal(docsResponse.statusCode, 200);
   assert.match(docsResponse.headers['content-type'], /text\/html/i);
+  assert.match(docsResponse.body, /\.\/static\/theme\/toy-favicon-32x32\.png/);
+  assert.equal(docsFaviconResponse.statusCode, 200);
+  assert.match(docsFaviconResponse.headers['content-type'], /image\/png/i);
 });
 
 test('openapi exposes basic auth security scheme when auth is enabled', async (t) => {

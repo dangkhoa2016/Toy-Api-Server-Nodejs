@@ -1,13 +1,4 @@
-// const debug = require('debug')('toy-api-server-nodejs:->routes->home');
-const fs = require('fs');
-const path = require('path');
-
-const faviconIco = fs.readFileSync(
-  path.join(process.cwd(), './app/imgs/favicon.ico'),
-);
-const faviconPng = fs.readFileSync(
-  path.join(process.cwd(), './app/imgs/favicon.png'),
-);
+const { faviconIco, faviconPng } = require('../libs/branding');
 
 async function routes(fastify, _options) {
   fastify.get(

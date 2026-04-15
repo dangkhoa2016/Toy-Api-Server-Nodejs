@@ -4,7 +4,7 @@ const {
   requestClient: { getClientKey, getRequestPath },
   variables: { getToyPolicyDefaults, statusCodes },
 } = require('../libs');
-const debug = require('debug')('toy-api-demo:->middleware->rate_limit');
+const debug = require('debug')('toy-api-server-nodejs:->middleware->rate_limit');
 
 const DEFAULT_SKIPPED_PATHS = new Set([
   '/health',

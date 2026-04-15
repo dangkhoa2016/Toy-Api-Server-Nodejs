@@ -7,6 +7,7 @@ const {
   createCorsOriginValidator,
   parseCorsOrigins,
 } = require('./libs/cors');
+const { swaggerUiLogo, swaggerUiTheme } = require('./libs/branding');
 const { registerApiSchemas } = require('./libs/api_schemas');
 const { getToyPolicyDefaults, timeConstants } = require('./libs/variables');
 const ToysService = require('./services/toys_service');
@@ -224,6 +225,8 @@ function buildServer(options = {}) {
 
   server.register(require('@fastify/swagger-ui'), {
     routePrefix: '/docs',
+    logo: swaggerUiLogo,
+    theme: swaggerUiTheme,
     uiConfig: {
       docExpansion: 'list',
       deepLinking: false,
