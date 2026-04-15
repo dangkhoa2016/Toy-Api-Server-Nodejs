@@ -2,22 +2,33 @@
 const fs = require('fs');
 const path = require('path');
 
-async function routes(fastify, options) {
+const faviconIco = fs.readFileSync(
+  path.join(process.cwd(), './app/imgs/favicon.ico'),
+);
+const faviconPng = fs.readFileSync(
+  path.join(process.cwd(), './app/imgs/favicon.png'),
+);
 
-  fastify.get('/', async (request, reply) => {
-    return 'Welcome !!!'
+async function routes(fastify, _options) {
+  fastify.get('/', async (_request, _reply) => {
+    return 'Welcome !!!';
   });
 
-  fastify.get('/favicon.ico', async (request, reply) => {
-    const buffer = await fs.readFileSync(path.join(process.cwd(), './app/imgs/favicon.ico'));
-    reply.type('image/x-icon').send(buffer);
+  fastify.get('/health', async () => {
+    return {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    };
   });
 
-  fastify.get('/favicon.png', async (request, reply) => {
-    const buffer = await fs.readFileSync(path.join(process.cwd(), './app/imgs/favicon.png'));
-    reply.type('image/png').send(buffer);
+  fastify.get('/favicon.ico', async (_request, reply) => {
+    reply.type('image/x-icon').send(faviconIco);
   });
 
-};
+  fastify.get('/favicon.png', async (_request, reply) => {
+    reply.type('image/png').send(faviconPng);
+  });
+}
 
 module.exports = routes;

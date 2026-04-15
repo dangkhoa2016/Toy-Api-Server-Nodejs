@@ -1,8 +1,7 @@
 const fp = require('fastify-plugin');
 const debug = require('debug')('toy-api-server-nodejs:->middleware->logger');
 
-module.exports = fp(async (server, opts) => {
-
+module.exports = fp(async (server, _opts) => {
   const now = () => Date.now();
 
   /*
@@ -13,27 +12,25 @@ module.exports = fp(async (server, opts) => {
 
   server.addHook('preHandler', async function (request, reply) {
     reply.startTime = now();
-    if (request.body)
-      debug({ info: 'parse body', body: request.body });
+    if (request.body) debug({ info: 'parse body', body: request.body });
   });
 
   server.addHook('onRequest', async (request, reply) => {
     reply.startTime = now();
     debug({
-      info: 'received request', url: request.raw.url,
-      method: request.method, id: request.id
+      info: 'received request',
+      url: request.raw.url,
+      method: request.method,
+      id: request.id,
     });
   });
 
   server.addHook('onResponse', async (request, reply) => {
-    debug(
-      {
-        info: 'response completed',
-        url: request.raw.url, // add url to response as well for simple correlating
-        statusCode: reply.raw.statusCode,
-        durationMs: now() - reply.startTime, // recreate duration in ms - use process.hrtime() - https://nodejs.org/api/process.html#process_process_hrtime_bigint for most accuracy
-      }
-    );
+    debug({
+      info: 'response completed',
+      url: request.raw.url, // add url to response as well for simple correlating
+      statusCode: reply.raw.statusCode,
+      durationMs: now() - reply.startTime, // recreate duration in ms - use process.hrtime() - https://nodejs.org/api/process.html#process_process_hrtime_bigint for most accuracy
+    });
   });
-
 });

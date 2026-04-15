@@ -32,7 +32,10 @@ test('toy routes support CRUD and like flows', async (t) => {
   assert.equal(listResponse.statusCode, 200);
   assert.equal(listResponse.json().length, 1);
 
-  const showResponse = await server.inject({ method: 'GET', url: '/api/toys/1' });
+  const showResponse = await server.inject({
+    method: 'GET',
+    url: '/api/toys/1',
+  });
   assert.equal(showResponse.statusCode, 200);
   assert.equal(showResponse.json().name, 'Car');
 
@@ -52,17 +55,29 @@ test('toy routes support CRUD and like flows', async (t) => {
   assert.equal(likeResponse.statusCode, 200);
   assert.equal(likeResponse.json().likes, 10);
 
-  const deleteResponse = await server.inject({ method: 'DELETE', url: '/api/toys/1' });
+  const deleteResponse = await server.inject({
+    method: 'DELETE',
+    url: '/api/toys/1',
+  });
   assert.equal(deleteResponse.statusCode, 200);
   assert.deepEqual(deleteResponse.json(), { deleted: true });
 
-  const missingDeleteResponse = await server.inject({ method: 'DELETE', url: '/api/toys/1' });
+  const missingDeleteResponse = await server.inject({
+    method: 'DELETE',
+    url: '/api/toys/1',
+  });
   assert.equal(missingDeleteResponse.statusCode, 404);
   assert.equal(missingDeleteResponse.json().error.statusCode, 404);
 
-  const removedDeleteRouteResponse = await server.inject({ method: 'GET', url: '/api/toys/1/delete' });
+  const removedDeleteRouteResponse = await server.inject({
+    method: 'GET',
+    url: '/api/toys/1/delete',
+  });
   assert.equal(removedDeleteRouteResponse.statusCode, 404);
-  assert.equal(removedDeleteRouteResponse.json().error.message, 'Route not found');
+  assert.equal(
+    removedDeleteRouteResponse.json().error.message,
+    'Route not found',
+  );
 });
 
 test('toy routes return standardized validation errors', async (t) => {
@@ -81,6 +96,21 @@ test('toy routes return standardized validation errors', async (t) => {
   const payload = response.json();
   assert.equal(payload.error.statusCode, 422);
   assert.match(payload.error.message, /name/i);
+});
+
+test('health returns service status', async (t) => {
+  const server = await createServer({ nodeEnv: 'test' });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const response = await server.inject({ method: 'GET', url: '/health' });
+
+  assert.equal(response.statusCode, 200);
+  const payload = response.json();
+  assert.equal(payload.status, 'ok');
+  assert.equal(typeof payload.timestamp, 'string');
+  assert.equal(typeof payload.uptime, 'number');
 });
 
 test('cors allows trusted origins in production and blocks others', async (t) => {
@@ -102,7 +132,10 @@ test('cors allows trusted origins in production and blocks others', async (t) =>
   });
 
   assert.equal(allowedResponse.statusCode, 204);
-  assert.equal(allowedResponse.headers['access-control-allow-origin'], 'https://allowed.example');
+  assert.equal(
+    allowedResponse.headers['access-control-allow-origin'],
+    'https://allowed.example',
+  );
 
   const blockedResponse = await server.inject({
     method: 'GET',
@@ -114,5 +147,8 @@ test('cors allows trusted origins in production and blocks others', async (t) =>
 
   assert.equal(blockedResponse.statusCode, 403);
   assert.equal(blockedResponse.json().error.statusCode, 403);
-  assert.equal(blockedResponse.json().error.message, 'Origin is not allowed by CORS');
+  assert.equal(
+    blockedResponse.json().error.message,
+    'Origin is not allowed by CORS',
+  );
 });

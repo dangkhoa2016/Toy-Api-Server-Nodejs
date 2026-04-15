@@ -1,4 +1,3 @@
-
 const sortDirectionAscending = ['asc', 'ascending', 'true', true];
 const enableStatuses = [true, 'e', 'enable'];
 
@@ -10,9 +9,10 @@ const statusCodes = {
   DATA_CREATED: 201,
   UNPROCESSABLE_ENTITY: 422,
   NO_CONTENT: 204,
-}
+};
 
 module.exports = {
   sortDirectionAscending,
-  statusCodes, enableStatuses,
-}
+  statusCodes,
+  enableStatuses,
+};

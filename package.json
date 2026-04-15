@@ -4,7 +4,11 @@
   "description": "A toy API server built with Node.js and Fastify.",
   "main": "nodemon bin/www",
   "scripts": {
-    "dev": "DEBUG=toy-api-server-nodejs* nodemon bin/www",
+    "dev": "DEBUG=toy-api-demo* nodemon bin/www",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "start": "node bin/www",
     "test": "node --test"
   },
@@ -24,7 +28,11 @@
     "lodash-core": "^4.17.19"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "dotenv": "^17.4.2",
+    "eslint": "^10.2.0",
+    "globals": "^17.5.0",
     "nodemon": "^3.1.14",
-    "dotenv": "^17.4.2"
+    "prettier": "^3.8.2"
   }
 }

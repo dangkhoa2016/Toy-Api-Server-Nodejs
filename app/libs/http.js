@@ -6,14 +6,15 @@ function errorPayload(statusCode, message, details) {
     },
   };
 
-  if (typeof details !== 'undefined')
-    payload.error.details = details;
+  if (typeof details !== 'undefined') payload.error.details = details;
 
   return payload;
 }
 
 function sendError(reply, statusCode, message, details) {
-  return reply.code(statusCode).send(errorPayload(statusCode, message, details));
+  return reply
+    .code(statusCode)
+    .send(errorPayload(statusCode, message, details));
 }
 
 module.exports = {

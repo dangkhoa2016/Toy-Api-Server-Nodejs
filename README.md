@@ -7,11 +7,11 @@ The project intentionally keeps all toy data in memory, so data is lost whenever
 ## Setup
 
 1. Install dependencies:
-	`npm install`
+   `npm install`
 2. Copy environment values if needed:
-	`cp .env.example .env.local`
+   `cp .env.example .env.local`
 3. Start the development server:
-	`npm run dev`
+   `npm run dev`
 
 ## Environment
 
@@ -24,19 +24,22 @@ When `NODE_ENV=production`, requests with an untrusted `Origin` header are rejec
 ## Scripts
 
 - `npm run dev`: run with nodemon and debug logs.
+- `npm run lint`: lint JavaScript files with ESLint.
+- `npm run format`: format the repository with Prettier.
 - `npm start`: run once with Node.js.
 - `npm test`: run unit and integration tests with the Node test runner.
 
 ## API notes
 
 - `DELETE /api/toys/:id` is the only supported delete endpoint.
+- `GET /healthz` returns a lightweight service health payload.
 - Error responses are standardized as:
 
 ```json
 {
   "error": {
-	 "statusCode": 404,
-	 "message": "Route not found"
+    "statusCode": 404,
+    "message": "Route not found"
   }
 }
 ```

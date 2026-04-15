@@ -1,15 +1,21 @@
 const debug = require('debug')('toy-api-server-nodejs:->routes->errors');
 const fp = require('fastify-plugin');
-const { http: { sendError }, variables: { statusCodes }, } = require('../libs');
+const {
+  http: { sendError },
+  variables: { statusCodes },
+} = require('../libs');
 
-module.exports = fp(async (fastify, options) => {
-
+module.exports = fp(async (fastify, _options) => {
   fastify.decorate('notFound', (request, reply) => {
     return sendError(reply, statusCodes.NOT_FOUND, 'Route not found');
   });
 
   fastify.decorate('exception', (request, reply) => {
-    return sendError(reply, statusCodes.INTERNAL_SERVER_ERROR, 'Internal Server Error');
+    return sendError(
+      reply,
+      statusCodes.INTERNAL_SERVER_ERROR,
+      'Internal Server Error',
+    );
   });
 
   fastify.get('/404', async (request, reply) => {
@@ -36,5 +42,4 @@ module.exports = fp(async (fastify, options) => {
   });
 
   fastify.setNotFoundHandler(fastify.notFound);
-
 });

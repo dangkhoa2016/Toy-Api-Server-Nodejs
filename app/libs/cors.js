@@ -4,15 +4,14 @@ const corsAllowedHeaders = ['Content-Type', 'Location'];
 const corsExposedHeaders = ['Content-Disposition'];
 
 function parseCorsOrigins(value) {
-  if (!value)
-    return [];
+  if (!value) return [];
 
   if (Array.isArray(value))
-    return value.map(origin => String(origin).trim()).filter(Boolean);
+    return value.map((origin) => String(origin).trim()).filter(Boolean);
 
   return String(value)
     .split(',')
-    .map(origin => origin.trim())
+    .map((origin) => origin.trim())
     .filter(Boolean);
 }
 

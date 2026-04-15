@@ -8,7 +8,11 @@ beforeEach(() => {
 });
 
 test('createToy creates a new toy in memory', async () => {
-  const result = await toysHelpers.createToy({ name: 'Robot', image: 'robot.png', likes: 1 });
+  const result = await toysHelpers.createToy({
+    name: 'Robot',
+    image: 'robot.png',
+    likes: 1,
+  });
 
   assert.equal(result.code, 201);
   assert.equal(result.data.id, 1);
@@ -19,8 +23,17 @@ test('createToy creates a new toy in memory', async () => {
 });
 
 test('saveToy updates an existing toy', async () => {
-  const created = await toysHelpers.createToy({ name: 'Robot', image: 'robot.png', likes: 1 });
-  const updated = await toysHelpers.saveToy({ id: created.data.id, name: 'Drone', image: 'drone.png', likes: 4 });
+  const created = await toysHelpers.createToy({
+    name: 'Robot',
+    image: 'robot.png',
+    likes: 1,
+  });
+  const updated = await toysHelpers.saveToy({
+    id: created.data.id,
+    name: 'Drone',
+    image: 'drone.png',
+    likes: 4,
+  });
 
   assert.equal(updated.code, 200);
   assert.equal(updated.data.id, created.data.id);
@@ -29,7 +42,11 @@ test('saveToy updates an existing toy', async () => {
 });
 
 test('getToy returns a toy by id', async () => {
-  const created = await toysHelpers.createToy({ name: 'Train', image: 'train.png', likes: 2 });
+  const created = await toysHelpers.createToy({
+    name: 'Train',
+    image: 'train.png',
+    likes: 2,
+  });
   const result = await toysHelpers.getToy(created.data.id);
 
   assert.equal(result.code, 200);
@@ -37,7 +54,11 @@ test('getToy returns a toy by id', async () => {
 });
 
 test('likeToy updates likes for an existing toy', async () => {
-  const created = await toysHelpers.createToy({ name: 'Puzzle', image: 'puzzle.png', likes: 0 });
+  const created = await toysHelpers.createToy({
+    name: 'Puzzle',
+    image: 'puzzle.png',
+    likes: 0,
+  });
   const result = await toysHelpers.likeToy(created.data.id, 9);
 
   assert.equal(result.code, 200);
@@ -45,7 +66,11 @@ test('likeToy updates likes for an existing toy', async () => {
 });
 
 test('deleteToy removes an existing toy and returns 404 for missing ids', async () => {
-  const created = await toysHelpers.createToy({ name: 'Blocks', image: 'blocks.png', likes: 0 });
+  const created = await toysHelpers.createToy({
+    name: 'Blocks',
+    image: 'blocks.png',
+    likes: 0,
+  });
   const deleted = await toysHelpers.deleteToy(created.data.id);
   const missing = await toysHelpers.deleteToy(created.data.id);
 
