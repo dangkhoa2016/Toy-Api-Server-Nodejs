@@ -4,6 +4,7 @@ const {
   requestClient: { getClientKey, getRequestPath },
   variables: { getToyPolicyDefaults, statusCodes },
 } = require('../libs');
+const debug = require('debug')('toy-api-demo:->middleware->rate_limit');
 
 const DEFAULT_SKIPPED_PATHS = new Set([
   '/health',
@@ -62,6 +63,17 @@ module.exports = fp(async (server, options) => {
     store.setRateLimit(clientKey, nextEntry);
 
     const remaining = Math.max(0, max - nextEntry.count);
+
+    debug('Rate limit check', {
+      clientKey,
+      correlationId: request.correlationId,
+      requestId: request.id,
+      count: nextEntry.count,
+      limit: max,
+      remaining,
+      resetAt: nextEntry.resetAt,
+    });
+
     reply.header('x-ratelimit-limit', String(max));
     reply.header('x-ratelimit-remaining', String(remaining));
     reply.header(
@@ -69,13 +81,20 @@ module.exports = fp(async (server, options) => {
       String(Math.ceil(nextEntry.resetAt / 1000)),
     );
 
-    if (nextEntry.count <= max) return;
+    if (nextEntry.count <= max)
+      return;
 
     const retryAfterSeconds = Math.max(
       1,
       Math.ceil((nextEntry.resetAt - now) / 1000),
     );
     reply.header('retry-after', String(retryAfterSeconds));
+    debug('Rate limit exceeded', {
+      clientKey,
+      correlationId: request.correlationId,
+      requestId: request.id,
+      resetAt: nextEntry.resetAt,
+    });
 
     request.log.warn(
       {

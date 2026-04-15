@@ -227,7 +227,16 @@ class ToysService {
     const allowedToyLimit = seedState?.isActive
       ? this.seedMaxToysPerIp
       : this.maxToysPerIp;
+
+    debug('Creating toy', {
+      clientKey,
+      seedMode: Boolean(seedState?.isActive),
+      seedSuccessfulCreates: seedState?.successfulCreates ?? 0,
+      seedExpiresAt: seedState ? new Date(seedState.seedExpiresAt) : null,
+    });
     const activeToyCount = this.store.countToysByClientKey(clientKey);
+    debug('Active toy count', { clientKey, activeToyCount, allowedToyLimit });
+
     if (activeToyCount >= allowedToyLimit)
       return {
         code: statusCodes.TOO_MANY_REQUESTS,
