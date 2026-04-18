@@ -4,7 +4,8 @@ const Fastify = require('fastify');
 const {
   corsAllowedHeaders,
   corsExposedHeaders,
-  createCorsOriginValidator,
+  corsMethods,
+  createCorsOptionsResolver,
   parseCorsOrigins,
 } = require('./libs/cors');
 const { swaggerUiLogo, swaggerUiTheme } = require('./libs/branding');
@@ -300,9 +301,15 @@ function buildServer(options = {}) {
 
   server.register(require('@fastify/cors'), {
     allowedHeaders: corsAllowedHeaders,
+    delegator: createCorsOptionsResolver({
+      allowedHeaders: corsAllowedHeaders,
+      corsOrigins,
+      exposedHeaders: corsExposedHeaders,
+      methods: corsMethods,
+      nodeEnv,
+    }),
     exposedHeaders: corsExposedHeaders,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    origin: createCorsOriginValidator({ corsOrigins, nodeEnv }),
+    methods: corsMethods,
   });
 
   server.register(require('./middleware/basic_auth'), resolvedBasicAuthOptions);

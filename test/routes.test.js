@@ -663,7 +663,7 @@ test('cors allows trusted origins in production and blocks others', async (t) =>
     url: '/api/toys',
     headers: {
       origin: 'https://allowed.example',
-      'access-control-request-method': 'GET',
+      'access-control-request-method': 'PATCH',
     },
   });
 
@@ -671,6 +671,10 @@ test('cors allows trusted origins in production and blocks others', async (t) =>
   assert.equal(
     allowedResponse.headers['access-control-allow-origin'],
     'https://allowed.example',
+  );
+  assert.equal(
+    allowedResponse.headers['access-control-allow-methods'],
+    'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   );
 
   const blockedResponse = await server.inject({
@@ -701,6 +705,67 @@ test('cors allows trusted origins in production and blocks others', async (t) =>
   assert.equal(
     authenticatedResponse.headers['access-control-allow-origin'],
     'https://allowed.example',
+  );
+});
+
+test('cors allows localhost docs proxy origins for a trusted forwarded host', async (t) => {
+  const server = await createServer({
+    nodeEnv: 'production',
+    corsOrigins: ['https://allowed.example'],
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const response = await server.inject({
+    method: 'POST',
+    url: '/api/toys/',
+    headers: {
+      origin: 'http://localhost:8080',
+      referer: 'https://allowed.example/docs',
+      'x-forwarded-host': 'allowed.example',
+      'x-forwarded-proto': 'https',
+    },
+    payload: {
+      name: 'Docs Toy',
+      image: 'https://example.com/docs-toy.png',
+      likes: 0,
+    },
+  });
+
+  assert.equal(response.statusCode, 201);
+  assert.equal(
+    response.headers['access-control-allow-origin'],
+    'http://localhost:8080',
+  );
+});
+
+test('cors preflight for trusted frontend origins includes PATCH', async (t) => {
+  const server = await createServer({
+    nodeEnv: 'production',
+    corsOrigins: ['https://frontend.example'],
+  });
+  t.after(async () => {
+    await server.close();
+  });
+
+  const response = await server.inject({
+    method: 'OPTIONS',
+    url: '/api/toys/4/likes',
+    headers: {
+      origin: 'https://frontend.example',
+      'access-control-request-method': 'PATCH',
+    },
+  });
+
+  assert.equal(response.statusCode, 204);
+  assert.equal(
+    response.headers['access-control-allow-origin'],
+    'https://frontend.example',
+  );
+  assert.equal(
+    response.headers['access-control-allow-methods'],
+    'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   );
 });
 
