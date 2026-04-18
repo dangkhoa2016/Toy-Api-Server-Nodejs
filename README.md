@@ -6,6 +6,13 @@ Sample REST API built with Fastify.
 
 The project intentionally keeps all toy data in memory and expires records automatically after a short TTL.
 
+## Frontend Integrations
+
+This API is also used as the backend for these frontend projects:
+
+- [Toys-UI-Javascript](https://github.com/dangkhoa2016/Toys-UI-Javascript)
+- [Toys-UI-VueJs](https://github.com/dangkhoa2016/Toys-UI-VueJs)
+
 ## Setup
 
 1. Install dependencies:
@@ -16,6 +23,14 @@ The project intentionally keeps all toy data in memory and expires records autom
    `npm run dev`
 
 When running outside production, `bin/www` automatically loads variables from `.env.local`.
+
+## Technologies Used
+
+- Core runtime: `Node.js` (CommonJS modules) + `Fastify`.
+- Fastify ecosystem: `@fastify/cors`, `@fastify/helmet`, `@fastify/swagger`, `@fastify/swagger-ui`, `fastify-plugin`.
+- Utilities: `debug`, `lodash-core`, `dotenv`.
+- Developer tooling: `nodemon`, `eslint`, `@eslint/js`, `globals`, `prettier`.
+- Testing and CI: Node.js built-in test runner (`node --test`) and GitHub Actions (Node 20 workflow).
 
 ## Environment
 
@@ -41,11 +56,13 @@ When running outside production, `bin/www` automatically loads variables from `.
 - `DEFAULT_TOY_TTL_MINUTES`: fallback toy TTL in minutes used when `TOY_TTL_MS` is not set.
 - `TOY_TTL_MS`: time-to-live for each toy record in milliseconds.
 - `DEFAULT_TOY_CLEANUP_INTERVAL_MINUTES`: fallback cleanup interval in minutes used when `TOY_CLEANUP_INTERVAL_MS` is not set.
-- `TOY_CLEANUP_INTERVAL_MS`: cleanup interval used to remove expired toys and stale rate-limit entries.
+- `TOY_CLEANUP_INTERVAL_MS`: cleanup interval used by background maintenance to remove expired toys, stale rate-limit entries, and stale seed states.
 
 When `NODE_ENV=production`, requests with an untrusted `Origin` header are rejected.
+Preflight responses for trusted origins advertise `GET, POST, PUT, PATCH, DELETE, OPTIONS`, so cross-origin updates such as `PATCH /api/toys/:id/likes` are allowed when the caller origin is trusted.
 Fastify's structured JSON logger is enabled whenever `LOG_LEVEL` is set, and production defaults it to `info`; responses still return `x-request-id` and `x-correlation-id` headers for request tracing.
 Rate limiting is in-memory and only applies to `POST /api/toys` by default.
+Responses to `POST /api/toys` include `x-ratelimit-limit`, `x-ratelimit-remaining`, and `x-ratelimit-reset`; when blocked, they also include `retry-after`.
 When basic auth is enabled, all routes except `/healthz` and favicon assets require credentials.
 
 ## Scripts
@@ -64,17 +81,20 @@ When basic auth is enabled, all routes except `/healthz` and favicon assets requ
 - OpenAPI JSON: `/openapi.json`
 - When basic auth is enabled, both `/docs/` and `/openapi.json` require credentials.
 - When basic auth is enabled, Swagger UI shows an `Authorize` button for the shared `basicAuth` scheme.
+- In production, Swagger UI requests still pass CORS when the docs page is served from a trusted forwarded host but the browser-origin is a local loopback proxy such as `http://localhost:8080`.
 
 ## Data Lifecycle
 
 - State only lives in memory and is cleared when the process stops.
 - Toy records expire automatically after `TOY_TTL_MS` and are removed by reads plus background cleanup.
+- Background maintenance runs every `TOY_CLEANUP_INTERVAL_MS` (default: 1 minute) and also cleans stale rate-limit and seed state entries.
 - A client IP can temporarily grow beyond `MAX_TOYS_PER_IP` during its first seed session, up to `SEED_MAX_TOYS_PER_IP` within `SEED_WINDOW_MS`.
 - Updating a toy or its likes does not extend its existing TTL.
 
 ## Security
 
 - Security headers are provided by Fastify Helmet.
+- CORS only trusts origins listed in `CORS_ORIGINS` in production, except for the narrow `/docs` proxy case above.
 - Rate limiting is enforced per client IP for `POST /api/toys` and returns `429` with `x-ratelimit-*` headers when exceeded.
 - Active toy records are capped per client IP and new creates return `429` once the quota is exhausted.
 - Seeding only changes the active-toy cap; it does not bypass the request rate limit for `POST /api/toys`.
@@ -84,6 +104,7 @@ When basic auth is enabled, all routes except `/healthz` and favicon assets requ
 
 - `DELETE /api/toys/:id` is the only supported delete endpoint.
 - `GET /healthz` returns a lightweight service health payload.
+- Full toy updates accept `POST`, `PUT`, or `PATCH` on `/api/toys/:id`; likes-only updates accept `POST`, `PUT`, or `PATCH` on `/api/toys/:id/likes`.
 - Create and update requests enforce `likes >= 0`, a bounded name length, and an absolute image URI.
 - Create requests store toys for 15 minutes by default before automatic expiry.
 - The first successful creates from one IP can grow that IP up to 15 active toys by default before the normal cap of 5 resumes.
@@ -143,6 +164,18 @@ Update a toy:
 
 ```bash
 curl -X PUT http://localhost:8080/api/toys/1 \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "name": "Toy Boat",
+      "image": "https://example.com/boat.png",
+      "likes": 3
+   }'
+```
+
+Update a toy with an alternative method:
+
+```bash
+curl -X POST http://localhost:8080/api/toys/1 \
    -H 'Content-Type: application/json' \
    -d '{
       "name": "Toy Boat",

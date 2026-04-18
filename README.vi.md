@@ -6,6 +6,13 @@ Ví dụ REST API được xây dựng bằng Fastify.
 
 Dự án chủ đích giữ toàn bộ dữ liệu đồ chơi trong bộ nhớ và tự động làm hết hạn record sau một khoảng TTL ngắn.
 
+## Tích hợp frontend
+
+API này cũng được dùng làm backend cho các dự án frontend sau:
+
+- [Toys-UI-Javascript](https://github.com/dangkhoa2016/Toys-UI-Javascript)
+- [Toys-UI-VueJs](https://github.com/dangkhoa2016/Toys-UI-VueJs)
+
 ## Cài đặt
 
 1. Cài dependency:
@@ -16,6 +23,14 @@ Dự án chủ đích giữ toàn bộ dữ liệu đồ chơi trong bộ nhớ 
    `npm run dev`
 
 Khi chạy ngoài môi trường production, `bin/www` sẽ tự động nạp biến từ `.env.local`.
+
+## Công nghệ sử dụng
+
+- Runtime chính: `Node.js` (CommonJS modules) + `Fastify`.
+- Hệ sinh thái Fastify: `@fastify/cors`, `@fastify/helmet`, `@fastify/swagger`, `@fastify/swagger-ui`, `fastify-plugin`.
+- Utilities: `debug`, `lodash-core`, `dotenv`.
+- Công cụ phát triển: `nodemon`, `eslint`, `@eslint/js`, `globals`, `prettier`.
+- Test và CI: Node.js built-in test runner (`node --test`) và GitHub Actions (workflow Node 20).
 
 ## Biến môi trường
 
@@ -41,11 +56,13 @@ Khi chạy ngoài môi trường production, `bin/www` sẽ tự động nạp b
 - `DEFAULT_TOY_TTL_MINUTES`: TTL mặc định của toy record tính theo phút khi chưa set `TOY_TTL_MS`.
 - `TOY_TTL_MS`: thời gian sống của mỗi toy record tính bằng mili giây.
 - `DEFAULT_TOY_CLEANUP_INTERVAL_MINUTES`: chu kỳ cleanup mặc định tính theo phút khi chưa set `TOY_CLEANUP_INTERVAL_MS`.
-- `TOY_CLEANUP_INTERVAL_MS`: chu kỳ dọn record hết hạn và state rate limit cũ.
+- `TOY_CLEANUP_INTERVAL_MS`: chu kỳ background maintenance dùng để dọn toy hết hạn, state rate limit cũ, và seed state đã cũ.
 
 Khi `NODE_ENV=production`, các request có header `Origin` không đáng tin cậy sẽ bị từ chối.
+Preflight response cho các origin tin cậy sẽ quảng bá `GET, POST, PUT, PATCH, DELETE, OPTIONS`, nên các update cross-origin như `PATCH /api/toys/:id/likes` được phép khi origin gọi API nằm trong danh sách tin cậy.
 Structured JSON logger của Fastify sẽ bật khi `LOG_LEVEL` được set, và trong production mặc định dùng mức `info`; response vẫn trả về header `x-request-id` cùng `x-correlation-id` để truy vết request.
 Rate limiting được lưu in-memory và mặc định chỉ áp dụng cho `POST /api/toys`.
+Response của `POST /api/toys` sẽ có các header `x-ratelimit-limit`, `x-ratelimit-remaining`, và `x-ratelimit-reset`; khi bị chặn còn có thêm `retry-after`.
 Khi bật basic auth, tất cả route ngoại trừ `/healthz` và các asset favicon sẽ yêu cầu credentials.
 
 ## Scripts
@@ -64,17 +81,20 @@ Khi bật basic auth, tất cả route ngoại trừ `/healthz` và các asset f
 - OpenAPI JSON: `/openapi.json`
 - Khi bật basic auth, cả `/docs/` và `/openapi.json` đều yêu cầu credentials.
 - Khi bật basic auth, Swagger UI sẽ hiển thị nút `Authorize` cho security scheme `basicAuth` dùng chung.
+- Trong production, request từ Swagger UI vẫn qua được CORS khi trang docs được phục vụ từ một forwarded host tin cậy nhưng browser-origin lại là loopback proxy cục bộ như `http://localhost:8080`.
 
 ## Vòng đời dữ liệu
 
 - State chỉ tồn tại trong memory và sẽ mất khi process dừng.
 - Toy record tự hết hạn theo `TOY_TTL_MS` và được dọn bởi luồng đọc cùng background cleanup.
+- Background maintenance chạy theo chu kỳ `TOY_CLEANUP_INTERVAL_MS` (mặc định: 1 phút) và cũng dọn các state rate limit, seed state đã cũ.
 - Một IP client có thể tạm thời vượt `MAX_TOYS_PER_IP` trong giai đoạn seed ban đầu, tối đa tới `SEED_MAX_TOYS_PER_IP` trong `SEED_WINDOW_MS`.
 - Việc update toy hoặc likes không gia hạn TTL hiện có của record đó.
 
 ## Bảo mật
 
 - Security headers được cung cấp bởi Fastify Helmet.
+- Trong production, CORS chỉ tin cậy các origin có trong `CORS_ORIGINS`, ngoại trừ ngoại lệ hẹp cho trường hợp proxy của `/docs` như mô tả ở trên.
 - Rate limiting được áp dụng theo IP client cho `POST /api/toys` và trả về `429` kèm các header `x-ratelimit-*` khi vượt ngưỡng.
 - Số toy record còn hiệu lực cũng bị giới hạn theo IP client; create mới sẽ trả `429` khi chạm quota.
 - Seed mode chỉ nới active-toy cap, không bỏ qua request rate limit của `POST /api/toys`.
@@ -84,6 +104,7 @@ Khi bật basic auth, tất cả route ngoại trừ `/healthz` và các asset f
 
 - `DELETE /api/toys/:id` là endpoint xoá duy nhất được hỗ trợ.
 - `GET /healthz` trả về payload health check nhẹ.
+- Update đầy đủ toy hỗ trợ `POST`, `PUT`, hoặc `PATCH` trên `/api/toys/:id`; update riêng likes hỗ trợ `POST`, `PUT`, hoặc `PATCH` trên `/api/toys/:id/likes`.
 - Request create và update yêu cầu `likes >= 0`, giới hạn độ dài tên, và `image` phải là URI tuyệt đối.
 - Record tạo mới mặc định chỉ tồn tại 15 phút trước khi tự hết hạn.
 - Các create thành công đầu tiên từ một IP có thể nâng giới hạn IP đó lên 15 active toy theo mặc định trước khi quay lại ngưỡng thường là 5.
@@ -143,6 +164,18 @@ Cập nhật một toy:
 
 ```bash
 curl -X PUT http://localhost:8080/api/toys/1 \
+   -H 'Content-Type: application/json' \
+   -d '{
+      "name": "Toy Boat",
+      "image": "https://example.com/boat.png",
+      "likes": 3
+   }'
+```
+
+Cập nhật một toy bằng phương thức thay thế:
+
+```bash
+curl -X POST http://localhost:8080/api/toys/1 \
    -H 'Content-Type: application/json' \
    -d '{
       "name": "Toy Boat",
