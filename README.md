@@ -2,7 +2,15 @@
 
 > 🌐 Language / Ngôn ngữ: **English** | [Tiếng Việt](README.vi.md)
 
-Sample REST API built with Fastify.
+Sample REST API built with Fastify for managing toy records with short-lived in-memory storage, automatic TTL cleanup, per-IP anti-abuse controls, optional Basic Auth, and Swagger/OpenAPI documentation.
+
+This repository is the source-of-truth Node.js implementation for the toy API behavior, validation rules, and naming conventions that are also mirrored by the [Toy-Api-Server-Cloudflare-Worker](https://github.com/dangkhoa2016/Toy-Api-Server-Cloudflare-Worker) port.
+
+For a file-by-file comparison with the Cloudflare Worker version, see [docs/comparison-with-cloudflare-worker.md](docs/comparison-with-cloudflare-worker.md).
+([Tiếng Việt](docs/comparison-with-cloudflare-worker.vi.md))
+
+For details on the anti-abuse and rate-limiting policy, see [docs/rate-limit.md](docs/rate-limit.md).
+([Tiếng Việt](docs/rate-limit.vi.md))
 
 The project intentionally keeps all toy data in memory and expires records automatically after a short TTL.
 

@@ -2,7 +2,15 @@
 
 > 🌐 Language / Ngôn ngữ: [English](README.md) | **Tiếng Việt**
 
-Ví dụ REST API được xây dựng bằng Fastify.
+REST API mẫu được xây dựng bằng Fastify để quản lý toy records với cơ chế lưu trữ in-memory có thời gian sống ngắn, tự động cleanup theo TTL, kiểm soát chống lạm dụng theo IP, Basic Auth tùy chọn, và tài liệu Swagger/OpenAPI.
+
+Repository này là bản Node.js nguồn tham chiếu chính cho hành vi API, quy tắc validation, và naming conventions, đồng thời cũng là nền tảng được bản port [Toy-Api-Server-Cloudflare-Worker](https://github.com/dangkhoa2016/Toy-Api-Server-Cloudflare-Worker) bám theo.
+
+Để xem tài liệu đối chiếu theo từng nhóm file với phiên bản Cloudflare Worker, xem [docs/comparison-with-cloudflare-worker.vi.md](docs/comparison-with-cloudflare-worker.vi.md).
+([English](docs/comparison-with-cloudflare-worker.md))
+
+Để xem chi tiết về chính sách chống lạm dụng và rate limiting, xem [docs/rate-limit.vi.md](docs/rate-limit.vi.md).
+([English](docs/rate-limit.md))
 
 Dự án chủ đích giữ toàn bộ dữ liệu đồ chơi trong bộ nhớ và tự động làm hết hạn record sau một khoảng TTL ngắn.
 
